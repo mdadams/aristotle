@@ -1,0 +1,524 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+indent_text()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	local indent="$1"
+	awk -v indent="$indent" '{printf "%*s%s\n", indent, "", $0;}' -
+}
+
+wrap_indent_text()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	local indent="$1"
+	width=$((80 - indent))
+	fmt -"$width" | indent_text "$indent"
+}
+
+add_log()
+{
+	if [ $# -ne 3 ]; then
+		return 1
+	fi
+	local file="$1"
+	local length="$2"
+	local title="$3"
+	local lines_per_page=75
+
+	# Two-up threshold.
+	local big_thresh=$((4 * lines_per_page))
+	# Four-up threshold.
+	local huge_thresh=$((10 * lines_per_page))
+	# Truncate threshold.
+	local inf_thresh=$((50 * lines_per_page))
+
+	if [ "$length" -ge $huge_thresh ]; then
+		upness=4
+	elif [ "$length" -ge $big_thresh ]; then
+		upness=2
+	else
+		upness=1
+	fi
+	if [ "$length" -lt $inf_thresh ]; then
+		topdf_log_opts+=(-u "$upness")
+		topdf_log_opts+=(-f text-utf8)
+		topdf_log_opts+=(-t "$title")
+		topdf_log_opts+=(-l)
+		topdf_log_opts+=(-i "$file")
+	else
+		# NOTE: Use truncated log here.
+		:
+		#message="(Log file with details is too large to print [$build_log_file_length lines].)"
+	fi
+	return 0
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-p package
+	    Add the package package_id to the list of packages to process.
+	-u
+	    Skip unavailable packages (and do not treat as an error).
+	-O
+	    Skip optional items.
+	-o report_file
+	    Set the output file for the report to report_file.
+	-v
+	    Increase the verbosity level.
+	EOF
+	exit 2
+}
+
+cmd_dir=$(dirname "$0") || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
+source "$cmd_dir/utilities" || exit 1
+#etc_dir="$cmd_dir/../etc"
+
+ari_info="$abs_cmd_dir/ari_info"
+ari_locate="$abs_cmd_dir/ari_locate"
+ari_mktemp="$abs_cmd_dir/ari_mktemp"
+topdf="$abs_cmd_dir/ari_topdf"
+
+user_name=`whoami` || panic "cannot get user name"
+host_name=`hostname` || panic "cannot get host name"
+unique_id="$user_name@$host_name@$$"
+
+tmp_dir_template="/tmp/ari_report-$unique_id-XXXXXXXX"
+
+reproducible=0
+cleanup=1
+project_dir=$("$ari_locate" -q) || project_dir=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
+packages=()
+skip_unavailable=0
+skip_optional=0
+
+while getopts ORD:d:o:p:vu option; do
+	case "$option" in
+	R)
+		reproducible=1;;
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		packages+=("$OPTARG");;
+	u)
+		skip_unavailable=1;;
+	O)
+		skip_optional=1;;
+	o)
+		out_file="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ne 0 ]; then
+	usage "unexpected command-line arguments"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+#if [ "$debug_level" -ge 1 ]; then
+#	cond_tee_opts=(-c)
+#else
+#	cond_tee_opts=()
+#fi
+
+project_dir=$("$ari_locate" -d "$project_dir" -q) || project_dir=
+
+if [ -z "$project_dir" ]; then
+	panic "no project directory"
+fi
+
+project=$(cat "$project_dir/assignment_id") || \
+  panic "cannot get assignment ID"
+
+dist_dir="$project_dir/distribution"
+
+project_name=$("$ari_info" -a "$project" name) || \
+  panic "cannot get project name"
+if [ "${#packages[@]}" -eq 0 ]; then
+	packages=($("$ari_info" -a "$project" packages)) || \
+	  panic "cannot get package list"
+fi
+
+tmp_files=()
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+
+student_name=$(cat "$project_dir/student_name") || \
+  panic "cannot get student name"
+student_id=$(cat "$project_dir/student_id") || \
+  panic "cannot get student ID"
+student_email=$(cat "$project_dir/student_email") || \
+  panic "cannot get email address"
+section=$(cat "$project_dir/section") || \
+  panic "cannot get section"
+
+summary_file="$tmp_dir/summary"
+summary_1_file="$tmp_dir/summary_1"
+summary_2_file="$tmp_dir/summary_2"
+
+report_files=($("$ari_info" -a "$project" report_files)) || \
+  panic "cannot get report files"
+
+rm -f "$summary_file" "$summary_1_file" "$summary_2_file"
+
+if [ "$verbose" -ge 1 ]; then
+	print_status
+fi
+print_status >> "$summary_1_file"
+
+for package in "${packages[@]}"; do
+
+	package_dir="$project_dir/package-$package"
+	source_dir="$package_dir/source"
+	derived_dir="$package_dir/derived"
+	install_dir="$package_dir/install"
+
+	configure_dir="$package_dir/configure"
+	configure_status_file="$configure_dir/status"
+	configure_log_file="$configure_dir/log"
+	configure_time_file="$configure_dir/time"
+
+	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+	  panic "cannot get optional"
+
+	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
+		if [ "$debug_level" -ge 1 ]; then
+			echo "skipping optional package"
+		fi
+		continue
+	fi
+
+	if [ ! -d "$package_dir" ]; then
+		if [ "$skip_unavailable" -ne 0 ]; then
+			continue
+		fi
+		panic "missing package $package"
+	fi
+
+	build_targets=($("$ari_info" -a "$project" package-"$package"/builds)) || \
+	  panic "cannot get build targets"
+
+	test_targets=($("$ari_info" -a "$project" package-"$package"/tests)) || \
+	  panic "cannot get test targets"
+
+	configure_status=$(cat "$configure_status_file") || \
+	  panic "cannot get configure status"
+	configure_log_length=$(count_lines "$configure_log_file") || \
+	  panic "cannot get log length"
+	configure_time=$(cat "$configure_time_file") || \
+	  panic "cannot get time"
+
+	############################################################
+	# package information
+	############################################################
+
+	package_name=$("$ari_info" -a "$project" package-"$package"/name) || \
+	  panic "cannot get package name"
+	package_name_buffer=$(echo "$package_name" | wrap_indent_text 4 ) || \
+	  panic "cannot format package name"
+	cat >> "$summary_2_file" <<- EOF
+	Package: $package
+	$package_name_buffer
+	EOF
+
+	############################################################
+	# configure results
+	############################################################
+
+	if [ "$verbose" -ge 1 ]; then
+		print_status "$reproducible" "$package" configure "---" "$configure_status" \
+		  "$configure_time" "" "$configure_log_length"
+	fi
+	print_status "$reproducible" "$package" configure "---" "$configure_status" \
+	  "$configure_time" "" "$configure_log_length" "" >> "$summary_1_file"
+	if [ "$configure_status" -ne 0 ]; then
+		add_log "$configure_log_file" "$configure_log_length" \
+		  "Log: $package configure"
+	fi
+
+	############################################################
+	# build results
+	############################################################
+
+	for target in "${build_targets[@]}"; do
+
+		build_dir="$package_dir/build-$target"
+		build_log_file="$build_dir/log"
+		build_status_file="$build_dir/status"
+		build_time_file="$build_dir/time"
+
+		target_name=$("$ari_info" \
+		  -a "$project" package-"$package"/build-"$target"/name) || \
+		  panic "cannot get target name"
+		target_name_buffer=$(echo "$target_name" | wrap_indent_text 4 ) || \
+		  panic "cannot format target name"
+		cat >> "$summary_2_file" <<- EOF
+		Build target: $target
+		$target_name_buffer
+		EOF
+
+		if [ ! -f "$build_status_file" ]; then
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "build" "$target" "" "" "" ""
+			fi
+			print_status "$reproducible" "$package" "build" "$target" "" "" "" "" \
+			  >> "$summary_1_file"
+			continue
+		fi
+
+		build_status=$(cat "$build_status_file") || \
+		  panic "cannot get build status"
+		build_log_length=$(count_lines "$build_log_file") || \
+		  panic "cannot get build log length"
+		build_time=$(cat "$build_time_file") || \
+		  panic "cannot get build time"
+		if [ "$verbose" -ge 1 ]; then
+			print_status "$reproducible" "$package" "build" "$target" "$build_status" \
+			  "$build_time" "" "$build_log_length" ""
+		fi
+		print_status "$reproducible" "$package" "build" "$target" "$build_status" \
+		  "$build_time" "" "$build_log_length" "" >> "$summary_1_file"
+
+		if [ "$build_status" -ne 0 ]; then
+			add_log "$build_log_file" "$build_log_length" \
+			  "Log: $package build $target"
+		fi
+
+	done
+
+	############################################################
+	# test results
+	############################################################
+
+	for target in "${test_targets[@]}"; do
+
+		test_dir="$package_dir/test-$target"
+		test_log_file="$test_dir/log"
+		test_status_file="$test_dir/status"
+		test_time_file="$test_dir/time"
+		test_result_file="$test_dir/result"
+
+		optional=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/optional)) || \
+		  panic "cannot get test targets"
+		if [ "$skip_optional" -ne 0 -a "$optional" -ne 0 ]; then
+			continue
+		fi
+
+		dependencies=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/depends_on)) || \
+		  panic "cannot get dependencies"
+		missing_dependency=0
+		for dependency in "${dependencies[@]}"; do
+			status_file="$package_dir/$dependency/status"
+			if [ -f "$status_file" ]; then
+				buffer=$(cat "$status_file") || \
+				  panic "cannot get contents of status file"
+				if [ "$buffer" -ne 0 ]; then
+					missing_dependency=1
+				fi
+			else
+				missing_dependency=1
+			fi
+		done
+		if [ "$missing_dependency" -ne 0 ]; then
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "test" "$target" \
+				  "D" "" "" ""
+			fi
+			continue
+		fi
+
+		target_name=$("$ari_info" \
+		  -a "$project" package-"$package"/test-"$target"/name) || \
+		  panic "cannot get target name"
+		target_name_buffer=$(echo "$target_name" | wrap_indent_text 4 ) || \
+		  panic "cannot format target name"
+		cat >> "$summary_2_file" <<- EOF
+		Test target: $target
+		$target_name_buffer
+		EOF
+
+		manual=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/manual)) || \
+		  panic "cannot get manual property"
+		if [ "$manual" -ne 0 ]; then
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "test" "$target" \
+				  "M" "" "" ""
+			fi
+			print_status "$reproducible" "$package" "test" "$target" \
+			  "M" "" "" "" >> "$summary_1_file"
+			continue
+		fi
+
+		if [ ! -f "$test_status_file" ]; then
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "test" "$target" "" "" "" ""
+			fi
+			print_status "$reproducible" "$package" "test" "$target" "" "" "" "" \
+			  >> "$summary_1_file"
+			continue
+		fi
+
+		test_status=$(cat "$test_status_file") || \
+		  panic "cannot get test status"
+		test_log_length=$(count_lines "$test_log_file") || \
+		  panic "cannot get test log length"
+		test_time=$(cat "$test_time_file") || \
+		  panic "cannot get test time"
+		if [ -f "$test_result_file" ]; then
+			test_result=$(cat "$test_result_file") || \
+			  panic "cannot get test result"
+		else
+			#test_result="?/?"
+			test_result=""
+		fi
+		if [ "$verbose" -ge 1 ]; then
+			print_status "$reproducible" "$package" "test" "$target" "$test_status" \
+			  "$test_time" "$test_result" "$test_log_length"
+		fi
+		print_status \
+		  "$reproducible" "$package" "test" "$target" "$test_status" \
+		  "$test_time" "$test_result" "$test_log_length" \
+		  >> "$summary_1_file"
+
+		if [ "$test_status" -ne 0 ]; then
+			add_log "$test_log_file" "$test_log_length" "Log: $package test $target"
+		fi
+
+	done
+
+	echo >> "$summary_2_file"
+
+
+done
+
+############################################################
+# source and other files
+############################################################
+
+file_list=("${report_files[@]}")
+for file in "${file_list[@]}"; do
+	target_file="$dist_dir/$file"
+	if [ -f "$target_file" ]; then
+		upness=1
+		topdf_other_opts+=(-u "$upness" -l -i "$target_file")
+	fi
+done
+
+############################################################
+# summary
+############################################################
+
+submitted_files_buffer=$(chdir "$dist_dir" && \
+  find . -mindepth 1 -printf "%M %7s %TY-%Tm-%Td %TH:%TM %p\n" | \
+  sort -k5) || \
+  panic "cannot get submitted files"
+results_buffer=$(cat "$summary_1_file") || \
+  panic "cannot get first part of summary"
+legend_buffer=$(cat "$summary_2_file") || \
+  panic "cannot get second part of summary"
+cat >> "$summary_file" <<- EOF
+Name: $student_name
+Student ID: $student_id
+Email: $student_email
+Section: $section
+
+Assignment ID: $project
+Assignment Title: $project_name
+
+Submitted Files
+===============
+
+$submitted_files_buffer
+
+Results
+=======
+
+$results_buffer
+
+Normally, an operation is indicated as having a status of either "OK" or
+"FAIL".  A status of "?" indicates that the operation could not be performed
+for some reason (e.g., due to an earlier error or being a manual step).
+The time (in seconds) required for an operation is denoted by an expression
+consisting of a number followed by the letter "s" (e.g., "5.0s").
+In the case of a test that consists of multiple test cases, the number of
+failed test cases and total number of test cases is expressed as a fraction
+(e.g., "10/50" means 10 test cases failed out of 50 test cases in total).
+The length (in lines) of the log file generated by an operation is denoted by
+an expression consisting of a number followed by the letter "L" (e.g., "10L").
+To ascertain the reason for the failure of an operation, check the contents
+of the log file provided.
+
+Legend
+======
+
+$legend_buffer
+EOF
+
+############################################################
+# generate document
+############################################################
+
+topdf_opts=()
+topdf_opts+=(-D "$debug_level")
+topdf_opts+=(-o "$out_file")
+topdf_opts+=(-f text -t "$student_name" -i "$summary_file")
+topdf_opts+=("${topdf_log_opts[@]}")
+topdf_opts+=("${topdf_other_opts[@]}")
+if [ "$verbose" -ge 2 ]; then
+	echo "Running $topdf ${topdf_opts[@]}"
+fi
+"$topdf" "${topdf_opts[@]}"
+
+if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
+	rm -rf "$tmp_dir" || echo "cannot remove temporary directory $tmp_dir"
+	true
+fi

@@ -1,0 +1,296 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+fatal_error()
+{
+	local status="$1"
+	shift 1
+	echo "ERROR: $@"
+	exit "$status"
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] input_source...
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-p project_dir_prefix
+	    Set the project directory prefix to project_dir_prefix.
+	-a assignment_id
+	    Set the assignment ID to assignment_id.
+	-i input_source
+	    Add the input source input_source to the list of input sources.
+	-t input_type
+	    Set the input type to input_type.
+	    By default, the input type is deduced based on the suffix used
+	    in the name of the input source.
+	    For example, if the name of the input source ends with the suffix
+	    ".git", the input type set to a Git repository, and if the name
+	    ends with the suffix ".zip", the input type is set to a Zip archive.
+	-s input_subtype
+	    Set the input subtype to input_subtype.
+	-v
+	    Increase the verbosity level of output.
+	-f
+	    Perform the test and report-generation operations.
+
+	Exit status:
+	0 all items successfully processed
+	1 one or more items skipped
+	2 bad usage
+	3 other error
+	EOF
+	exit 2
+}
+
+ari_import="$cmd_dir/ari_import"
+ari_validate="$cmd_dir/ari_validate"
+ari_generate="$cmd_dir/ari_generate"
+ari_build="$cmd_dir/ari_build"
+ari_test="$cmd_dir/ari_test"
+ari_report="$cmd_dir/ari_report"
+
+debug_level=${ARI_DEBUG_LEVEL:-0}
+project_dir_prefix=
+project_dir=
+in_sources=()
+in_type=
+in_subtype=
+verbose=0
+full=0
+
+while getopts FD:d:p:a:i:t:s:v option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		project_dir_prefix="$OPTARG";;
+	a)
+		default_project="$OPTARG";;
+	i)
+		in_sources+=("$OPTARG");;
+	t)
+		in_type="$OPTARG";;
+	s)
+		in_subtype="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	F)
+		full=1;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+for in_source in "$@"; do
+	in_sources+=("$in_source")
+done
+
+if [ -n "$project_dir" -a  ${#in_sources[@]} -ge 2 ]; then
+	usage "cannot specify a single project directory with multiple inputs"
+fi
+
+if [ -n "$project_dir_prefix" -a -n "$project_dir" ]; then
+	usage "cannot specify a project directory and directory prefix"
+fi
+
+#if [ -z "$in_type" ]; then
+#	usage "no input type specified"
+#fi
+
+skipped_in_sources=()
+
+for in_source in "${in_sources[@]}"; do
+
+	if [ -z "$in_type" ]; then
+		case "$in_source" in
+		*.tar.gz|*.tgz)
+			in_type=tgz;;
+		*.zip)
+			in_type=zip;;
+		*.git)
+			in_type=git;;
+		*)
+			in_type=dir;;
+		esac
+	fi
+
+	case "$in_type" in
+	zip)
+		base=$(basename "$in_source" .zip) || \
+		  fatal_error 3 "cannot get base name"
+		;;
+	tgz)
+		base=$(basename "$in_source" .tar.gz) || \
+		  fatal_error 3 "cannot get base name"
+		;;
+	directory|dir)
+		base=$(basename "$in_source") || \
+		  fatal_error 3 "cannot get base name"
+		;;
+	git)
+		base=$(basename "$in_source" .git) || \
+		  fatal_error 3 "cannot get base name"
+		;;
+	*)
+		fatal_error 3 "bug detected"
+		;;
+	esac
+
+	if [ -n "$project_dir_prefix" ]; then
+		project_dir="${project_dir_prefix}$base"
+	fi
+
+	if [ "${#in_sources[@]}" -gt 1 ]; then
+		cat <<- EOF
+		############################################################
+		Processing $in_source
+		############################################################
+		EOF
+	fi
+
+	import_opts=()
+	import_opts+=(-D "$debug_level")
+	if [ -n "$default_project" ]; then
+		import_opts+=(-a "$default_project")
+	fi
+	import_opts+=(-d "$project_dir")
+	import_opts+=(-t "$in_type")
+	import_opts+=(-i "$in_source")
+	if [ -n "$in_subtype" ]; then
+		import_opts+=(-s "$in_subtype")
+	fi
+	"$ari_import" "${import_opts[@]}"
+	if [ $? -ne 0 ]; then
+		echo "import failed"
+		skipped_in_sources+=("$in_source")
+		continue
+	fi
+
+	validate_opts=()
+	validate_opts+=(-D "$debug_level")
+	validate_opts+=(-d "$project_dir")
+	if [ "$verbose" -ge 1 ]; then
+		validate_opts+=(-v)
+	fi
+	"$ari_validate" "${validate_opts[@]}"
+	validate_status=$?
+
+	if [ "$validate_status" -ne 0 ]; then
+		eecho "THIS ASSIGNMENT WILL RECEIVE A MARK OF ZERO IF SUBMITTED!"
+		skipped_in_sources+=("$in_source")
+		warn "skipping remainder of processing for input $in_source"
+		continue
+	fi
+
+	generate_opts=()
+	generate_opts+=(-D "$debug_level")
+	generate_opts+=(-d "$project_dir")
+	generate_opts+=(-O)
+	"$ari_generate" "${generate_opts[@]}"
+	if [ $? -ne 0 ]; then
+		echo "generation failed"
+		skipped_in_sources+=("$in_source")
+		continue
+	fi
+
+	build_opts=()
+	build_opts+=(-D "$debug_level")
+	build_opts+=(-d "$project_dir")
+	build_opts+=(-O)
+	if [ "$verbose" -ge 1 ]; then
+		build_opts+=(-v)
+	fi
+	"$ari_build" "${build_opts[@]}"
+	if [ $? -ne 0 ]; then
+		echo "build failed"
+		skipped_in_sources+=("$in_source")
+		continue
+	fi
+
+	if [ "$full" -ne 0 ]; then
+
+		test_opts=()
+		test_opts+=(-D "$debug_level")
+		test_opts+=(-d "$project_dir")
+		test_opts+=(-O)
+		if [ "$verbose" -ge 1 ]; then
+			test_opts+=(-v)
+		fi
+		"$ari_test" "${test_opts[@]}"
+		if [ $? -ne 0 ]; then
+			echo "test failed"
+			skipped_in_sources+=("$in_source")
+			continue
+		fi
+
+		report_opts=()
+		report_opts+=(-D "$debug_level")
+		report_opts+=(-d "$project_dir")
+		report_opts+=(-o "$project_dir/report.pdf")
+		report_opts+=(-O)
+		#if [ "$verbose" -ge 1 ]; then
+		#	report_opts+=(-v)
+		#fi
+		"$ari_report" "${report_opts[@]}"
+		if [ $? -ne 0 ]; then
+			echo "test failed"
+			skipped_in_sources+=("$in_source")
+			continue
+		fi
+
+	fi
+
+done
+
+if [ "${#in_sources[@]}" -gt 1 ]; then
+	cat <<- EOF
+	############################################################
+	Summary
+	############################################################
+	EOF
+	echo "Number of skipped items: ${#skipped_in_sources[@]}"
+	echo "Skipped items:"
+	for in_source in "${skipped_in_sources[@]}"; do
+		echo "$in_source"
+	done
+fi
+
+if [ ${#skipped_in_sources[@]} -gt 0 ]; then
+	fatal_error 1 "one or more items could not be succesfully processed"
+fi
+
+exit 0

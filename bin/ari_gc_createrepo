@@ -1,0 +1,115 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] repo_name...
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-o org_name
+	    Set the organization to org_name.
+	-v
+	    Increase the verbosity level of output.
+	-q
+	    Decrease the verbosity level of output.
+	EOF
+	exit 2
+}
+
+ari_gc_curl="$cmd_dir/ari_gc_curl"
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+
+org_name=
+debug_level=0
+verbose=0
+
+while getopts D:o:vq option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	o)
+		org_name="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	q)
+		verbose=$((verbose - 1));;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+if [ -z "$org_name" ]; then
+	usage "no organization specified"
+fi
+
+failed_ops=()
+repo_names=("$@")
+
+for repo_name in "${repo_names[@]}"; do
+
+	if [ "${#repo_names[@]}" -ge 2 -a "$verbose" -ge 1 ]; then
+		echo "Creating repository $repo_name"
+	fi
+
+	output=$("$ari_gc_curl" -D "$debug_level" -- \
+	  -s -i \
+	  -d '{ "name": "'"$repo_name"'", "auto_init": false, "private": true }' \
+	  "https://api.github.com/orgs/$org_name/repos")
+	curl_status=$?
+	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
+	if [ "$verbose" -ge 2 ]; then
+		echo "curl status: $curl_status"
+		echo "HTTP status: $http_status"
+		echo "output:"
+		echo "$output"
+	fi
+	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
+		failures+=("$repo_name")
+		echo "ERROR: cannot create repository $repo_name"
+		continue
+	fi
+
+done
+
+if [ "${#failures[@]}" -ne 0 ]; then
+	echo "The following repositories could not be created:"
+	for failure in "${failures[@]}"; do
+		echo "    $failure"
+	done
+	panic "one or more repositories could not be created"
+fi

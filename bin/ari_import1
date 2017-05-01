@@ -1,0 +1,247 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+default_assignments_dir="$cmd_dir/../etc/default_assignments"
+assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]"
+	Options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-a assignment_id
+	    Set the assignment ID to assignment_id.
+	-i input_source
+	    Set the input source to input_source.
+	-t input_type
+	    Set the input type to input_type.
+	-s input_subtype
+	    Set the input subtype to input_subtype.
+	-c
+	    Check (i.e., verify) the tag.
+	EOF
+	exit 2
+}
+
+ari_student_info="$cmd_dir/ari_student_info"
+ari_validate_line="$cmd_dir/ari_validate_line"
+
+project_dir=
+default_project=
+in_source=
+in_type=
+in_subtype=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verify_sig=0
+
+while getopts D:d:i:a:t:s:c option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	a)
+		default_project="$OPTARG";;
+	i)
+		in_source="$OPTARG";;
+	t)
+		in_type="$OPTARG";;
+	s)
+		in_subtype="$OPTARG";;
+	c)
+		verify_sig=1;;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ -z "$project_dir" ]; then
+	usage "no output directory specified"
+fi
+if [ -z "$in_source" ]; then
+	usage "no input specified"
+fi
+if [ -z "$in_type" ]; then
+	usage "no input type specified"
+fi
+
+# Note: Should this be fixed?
+#dir=$("$cmd_dir/ari_locate" -d "$project_dir" -q) || dir=
+#if [ -n "$dir" ]; then
+#	panic "already in project dir"
+#fi
+
+# If the project directory exists, it must be empty.
+if [ -d "$project_dir" ]; then
+	is_dir_empty "$project_dir"
+	empty_status=$?
+	if [ "$empty_status" -ne 0 ]; then
+		if [ "$empty_status" -eq 1 ]; then
+			panic "non-empty project directory specified $project_dir"
+		else
+			panic "cannot determine if project directory is empty"
+		fi
+	fi
+fi
+
+dist_dir="$project_dir/distribution"
+
+mkdir -p "$project_dir" || panic "cannot make directory $project_dir"
+
+echo "Aristotle" > "$project_dir"/.aristotle
+
+for dir in distribution; do
+	target_dir="$project_dir/$dir"
+	mkdir -p "$target_dir" || \
+	  panic "cannot make directory $target_dir"
+done
+
+case "$in_type" in
+
+zip)
+	if [ ! -e "$in_source" ]; then
+		panic "nonexistent input file $in_source"
+	fi
+	unzip -q -d "$dist_dir" "$in_source" || panic "cannot unzip $in_source"
+	;;
+
+tgz)
+	if [ ! -e "$in_source" ]; then
+		panic "nonexistent input file $in_source"
+	fi
+	tar -x -z -C "$dist_dir" -f "$in_source" || \
+	  panic "cannot extract archive $in_source"
+	;;
+
+git)
+	if [ -z "$in_subtype" ]; then
+		in_subtype=master
+	fi
+#	(chdir "$dist_dir" && \
+#	  git clone -q -b "$in_subtype" "$in_source" . ) || \
+#	  panic "cannot clone repository"
+	# Clone the repository.
+	#(chdir "$dist_dir" && git clone -q "$in_source" . ) || \
+	#  panic "cannot clone repository $in_source"
+	git clone -q "$in_source" "$dist_dir" || \
+	  panic "cannot clone repository $in_source"
+
+	# Check for an empty repository.
+	GIT_DIR="$dist_dir/.git" git rev-list -n 1 --all >& /dev/null
+	if [ $? -ne 0 ]; then
+		empty_repo=1
+	else
+		empty_repo=0
+	fi
+	if [ "$empty_repo" -ne 0 ]; then
+		panic "cannot import empty repository $in_source"
+	fi
+
+	if [ "$verify_sig" -ne 0 ]; then
+#		gpg --list-keys "$signing_key" >& /dev/null || \
+#		  panic "no such key $signing_key"
+#		GIT_DIR="$dist_dir/.git" \
+#		  git config user.signingkey "$signing_key" || \
+#		  panic "cannot set signing key"
+
+		# Check for existence of tag.
+		GIT_DIR="$dist_dir/.git" \
+		  git rev-parse -q --verify "$in_subtype" >& /dev/null
+		if [ $? -ne 0 ]; then
+			tag_found=0
+		else
+			tag_found=1
+		fi
+		if [ "$tag_found" -ne 0 ]; then
+			GIT_DIR="$dist_dir/.git" git verify-tag "$in_subtype"
+			GIT_DIR="$dist_dir/.git" git tag -v "$in_subtype" >& /dev/null
+			verify_status=$?
+			if [ "$verify_status" -ne 0 ]; then
+				panic "tag verification failure"
+			fi
+		else
+			panic "tag not found"
+		fi
+	fi
+
+	# Checkout the desired branch/tag.
+	(chdir "$dist_dir" && git checkout "$in_subtype" >& /dev/null) || \
+	  panic "cannot checkout branch/tag $in_subtype in repository $in_source"
+
+	# Remove the Git repository directory.
+	rm -rf "$dist_dir/.git" || \
+	  panic "cannot remove git repository directory"
+	;;
+
+directory|dir)
+	if [ ! -d "$in_source" ]; then
+		panic "input $in_source is not a directory"
+	fi
+	(chdir "$in_source" && tar -cf - .) | (chdir "$dist_dir" && tar -xf -)
+	;;
+
+*)
+	panic "invalid input type $in_type"
+	;;
+
+esac
+
+if [ -z "$default_project" ]; then
+	identification_file="$dist_dir/IDENTIFICATION.txt"
+	if [ ! -f "$identification_file" ]; then
+		eecho "ERROR: no IDENTIFICATION.txt file"
+		panic "cannot determine assignment"
+	fi
+	project=$("$ari_student_info" \
+	  -f "$identification_file" -n assignment) || \
+	  panic "cannot get assignment property"
+	"$ari_validate_line" -e '^[A-Za-z0-9_]+$' "$project" || \
+	  panic "assignment ID is invalid ($project)"
+else
+	project="$default_project"
+fi
+
+echo "$project" > "$project_dir/assignment_id" || \
+  panic "cannot make assignment ID file"
+
+assignment_file="$assignments_dir/$project.asgn"
+if [ ! -e "$assignment_file" ]; then
+	eecho "WARNING: assignment with ID $project does not appear to be defined"
+fi
+
+exit 0

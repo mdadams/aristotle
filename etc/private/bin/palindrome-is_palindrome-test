@@ -1,0 +1,26 @@
+#! /usr/bin/env bash
+
+is_palindrome="$ARI_DERIVED_DIR/is_palindrome"
+
+failures=()
+all=()
+
+for word in even odd; do
+	ari_cmpout -I "$word" -O "not palindrome\n" "$is_palindrome" || \
+	  failures+=("$word")
+	all+=("$word")
+done
+
+for word in a aba abba; do
+	ari_cmpout -I "$word" -O "palindrome\n" "$is_palindrome" || \
+	  failures+=("$word")
+	all+=("$word")
+done
+
+exit_status=0
+if [ ${#failures[@]} -gt 0 ]; then
+	echo "${#failures[@]}/${#all[@]}" > "$ARI_TEST_RESULT_FILE"
+	exit_status=1
+fi
+
+exit "$exit_status"

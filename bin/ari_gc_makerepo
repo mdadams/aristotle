@@ -1,0 +1,208 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+perror()
+{
+	echo "ERROR: $@"
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] [input...]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-o org_name
+	    Set the organization to org_name.
+	-t input_type
+	    Set the input type to input_type.
+	    Allowed values: dir, zip, tgz
+	-v
+	    Increase the verbosity level of output.
+	-q
+	    Decrease the verbosity level of output.
+	EOF
+	exit 2
+}
+
+ari_gc_createrepo="$cmd_dir/ari_gc_createrepo"
+ari_gc_deleterepo="$cmd_dir/ari_gc_deleterepo"
+ari_git_makerepo="$cmd_dir/ari_git_makerepo"
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+
+verbose=0
+org_name=
+debug_level=0
+input_type=
+check_ssh_key=1
+
+while getopts ZD:o:vqt: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	o)
+		org_name="$OPTARG";;
+	t)
+		input_type="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	q)
+		verbose=$((verbose - 1));;
+	Z)
+		check_ssh_key=0;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+inputs=("$@")
+
+if [ -z "$org_name" ]; then
+	usage "no organization specified"
+fi
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ "$check_ssh_key" -ne 0 ]; then
+	check_for_ssh_key || panic "no ssh key is available"
+fi
+
+failures=()
+
+for input in "${inputs[@]}"; do
+
+	if [ "${#inputs[@]}" -ge 2 -a "$verbose" -ge 1 ]; then
+		echo "Processing input $input"
+	fi
+
+	if [ -z "$input_type" ]; then
+		if [ -d "$input" ]; then
+			input_type=dir
+		fi
+		case "$input" in
+		*.zip)
+			input_type=zip
+			;;
+		*.tgz)
+			input_type=tgz
+			;;
+		*.tar.gz)
+			input_type=tgz
+			;;
+		esac
+	fi
+
+	if [ -z "$input_type" ]; then
+		failures+=("$input")
+		perror "cannot determine input type"
+		continue
+	fi
+
+	extension=
+	if [ "$input_type" != dir ]; then
+		case "$input" in
+		*.zip)
+			extension=zip
+			;;
+		*.tgz)
+			extension=tgz
+			;;
+		*.tar.gz)
+			extension=tar.gz
+			;;
+		esac
+	fi
+
+	args=()
+	if [ -n "$extension" ]; then
+		args+=(".$extension")
+	fi
+	repo_name=$(basename "$input" "${args[@]}")
+	if [ $? -ne 0 ]; then
+		failures+=("$input")
+		perror "cannot get basename"
+		continue
+	fi
+
+	args=()
+	args+=(-D "$debug_level")
+	args+=(-o "$org_name")
+	args+=("$repo_name")
+	if [ "$verbose" -ge 2 ]; then
+		echo "Running $ari_gc_createrepo ${args[@]}"
+	fi
+	"$ari_gc_createrepo" "${args[@]}"
+	if [ $? -ne 0 ]; then
+		failures+=("$input")
+		perror "cannot create repository"
+		continue
+	fi
+
+	clone_url="ssh://git@github.com/$org_name/$repo_name.git"
+
+	args=()
+	if [ "$verbose" -ge 1 ]; then
+		args+=(-v)
+	fi
+	args+=(-t "$input_type")
+	args+=("$input")
+	args+=("$clone_url")
+	if [ "$verbose" -ge 2 ]; then
+		echo "Running $ari_git_makerepo ${args[@]}"
+	fi
+	"$ari_git_makerepo" "${args[@]}"
+	if [ $? -ne 0 ]; then
+		failures+=("$input")
+		perror "cannot make repository"
+		#"$ari_gc_deleterepo" -D "$debug_level" -o "$org_name" "$repo_name"
+		#if [ $? -ne 0 ]; then
+		#	perror "cannot delete partially constructed repository"
+		#fi
+		continue
+	fi
+
+done
+
+if [ "${#failures[@]}" -ne 0 ]; then
+	echo "The following inputs could not be succesfully processed:"
+	for failure in "${failures[@]}"; do
+		echo "    $failure"
+	done
+	panic "failed"
+fi

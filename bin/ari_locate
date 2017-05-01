@@ -1,0 +1,110 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+#etc_dir="$cmd_dir/../etc"
+
+check_directory()
+{
+	local sig=6db2f9ca6dfedeb0383fd9ca4950d73d38441aef51242322aeda45ff6ae2ee96
+	local dir="$1"
+	local file="$dir/.aristotle"
+	if [ -f "$file" -a -f "$dir/assignment_id" ]; then
+		local checksum=$(sha256sum --binary "$file" | awk '{print $1;}' -) || \
+		  return 1
+		if [ "$checksum" = "$sig" ]; then
+			return 0
+		fi
+		return 3
+	fi
+	return 1
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-q
+	    Enable quiet mode.
+	EOF
+	exit 2
+}
+
+debug_level=${ARI_DEBUG_LEVEL:-0}
+quiet=0
+
+while getopts d:qD: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	q)
+		quiet=1;;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$project_dir" ]; then
+	dir="$project_dir"
+else
+	dir=$(pwd) || panic "cannot get current directory"
+fi
+
+found=0
+while true; do
+	#eecho "testing $dir"
+	check_directory "$dir"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		found=1
+		break
+	fi
+	if [ "$dir" = "/" ]; then
+		found=0
+		break
+	fi
+	dir="$dir/.."
+	dir=$(readlink -f "$dir") || exit 1
+done
+
+if [ "$found" -eq 0 ]; then
+	if [ "$quiet" -eq 0 ]; then
+		eecho "cannot locate project"
+	fi
+	exit 1
+fi
+
+echo "$dir"
+exit 0

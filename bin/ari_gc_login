@@ -1,0 +1,176 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-n name
+	    Set the name used in the note field (for the access token) to name.
+	-u user_name
+	    Set the user name to user_name.
+	-v
+	    Increase the verbosity level of output.
+	EOF
+	exit 2
+}
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+gc_username_file="$user_config_dir/gc_username"
+gc_password_file="$user_config_dir/gc_password"
+gc_token_file="$user_config_dir/gc_token"
+gc_id_file="$user_config_dir/gc_id"
+gc_note_file="$user_config_dir/gc_note"
+
+user_name=$(whoami) || panic "cannot get user name"
+host_name=$(hostname) || panic "cannot get host name"
+
+debug_level=0
+gc_user="$user_name"
+verbose=0
+name="$user_name@$host_name"
+
+# The curl command does not seem to allow the argument to the -H option
+# to be read from a file.  This leads to the use of access tokens being
+# a security concern on many Unix systems.
+# So, do not use tokens unless you know what you are doing.
+use_token=0
+
+while getopts D:u:vn: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	n)
+		name="$OPTARG";;
+	u)
+		gc_user="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$name" ]; then
+	gc_note="Aristotle --- $name"
+else
+	gc_note="Aristotle"
+fi
+
+if [ -z "$gc_user" ]; then
+	usage "no user name specified"
+fi
+
+if [ -f "$gc_login_file" ]; then
+	panic "already logged in"
+fi
+
+if [ "$use_token" -ne 0 ]; then
+
+	output=$(curl -s -i -u "$gc_user" \
+	  -d \
+	  '{"scopes": ["repo", "user", "delete_repo"], "note": "'"$gc_note"'"}' \
+	  https://api.github.com/authorizations)
+	curl_status=$?
+
+	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
+
+	if [ "$debug_level" -ge 1 ]; then
+		echo "curl status: $curl_status"
+		echo "HTTP status: $http_status"
+		echo "output:"
+		echo "$output"
+	fi
+
+	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
+		panic "operation failed"
+	fi
+
+	http_header=$(echo "$output" | curl_select header) || \
+	  panic "cannot get HTTP header"
+	json_data=$(echo "$output" | curl_select body) || \
+	  panic "cannot get JSON data"
+
+	if [ "$debug_level" -ge 1 ]; then
+		echo "JSON data:"
+		echo "$json_data"
+		echo "HTTP header:"
+		echo "$http_header"
+	fi
+
+	gc_token=$(echo "$json_data" | jq -r '.token') || \
+	  panic "cannot get token"
+	gc_id=$(echo "$json_data" | jq -r '.id') || \
+	  panic "cannot get id"
+
+else
+	read -s -p "Password for user $gc_user: " gc_password
+	echo
+fi
+
+umask 077
+
+if [ ! -d "$user_config_dir" ]; then
+	mkdir -p "$user_config_dir" || \
+	  panic "cannot make directory $user_config_dir"
+	chmod g-rwx,o-rwx "$user_config_dir" || \
+	  panic "cannot set permissions for directory $user_config_dir"
+fi
+for file in "$gc_username_file" "$gc_password_file" "$gc_token_file" \
+  "$gc_id_file" "$gc_note_file"; do
+	if [ -f "$file" ]; then
+		rm "$file" || panic "cannot remove file $file"
+	fi
+done
+
+echo "$gc_user" > "$gc_username_file" || \
+  panic "cannot create gc_username file"
+if [ "$use_token" -ne 0 ]; then
+	echo "$gc_id" > "$gc_id_file" || \
+	  panic "cannot create gc_id file"
+	echo "$gc_token" > "$gc_token_file" || \
+	  panic "cannot create gc_token file"
+	echo "$gc_note" > "$gc_note_file" || \
+	  panic "cannot create gc_note file"
+	# This following is just a failsafe (in case the umask is set wrong.
+	chmod g-rwx,o-rwx "$gc_token_file" || \
+	  panic "cannot set permissions for file $gc_token_file"
+else
+	echo "$gc_password" > "$gc_password_file" || \
+	  panic "cannot create gc_password file"
+	# This following is just a failsafe (in case the umask is set wrong.
+	chmod g-rwx,o-rwx "$gc_password_file" || \
+	  panic "cannot set permissions for file $gc_password_file"
+fi
+echo "logged in" > "$gc_login_file"

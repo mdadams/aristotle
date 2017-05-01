@@ -1,0 +1,213 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+warn()
+{
+	echo "WARNING: $@" 1>&2
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] input_source...
+	options:
+	-D debug_level
+	    Set debug level to debug_level.
+	-P
+	    Only perform precheck (i.e., skip optional packages).
+	EOF
+	exit 2
+}
+
+ari_validate="$cmd_dir/ari_validate"
+ari_generate="$cmd_dir/ari_generate"
+ari_build="$cmd_dir/ari_build"
+ari_test="$cmd_dir/ari_test"
+ari_report="$cmd_dir/ari_report"
+ari_info="$cmd_dir/ari_info"
+
+reproducible=0
+precheck=0
+debug_level=${ARI_DEBUG_LEVEL:-0}
+
+while getopts RPD:o: option; do
+	case "$option" in
+	R)
+		reproducible=1;;
+	P)
+		precheck=1;;
+	D)
+		debug_level="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+skipped_dirs=()
+dirs=("$@")
+
+for dir in "${dirs[@]}"; do
+
+	project_dir="$dir"
+
+	if [ ${#dirs[@]} -gt 1 ]; then
+		cat <<- EOF
+		############################################################
+		Processing $dir
+		############################################################
+		EOF
+	fi
+
+	opts=()
+	opts+=(-D "$debug_level")
+	opts+=(-d "$project_dir")
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running ari_validate ${opts[@]}"
+	fi
+	"$ari_validate" "${opts[@]}"
+	validate_status=$?
+
+	if [ "$validate_status" -ne 0 ]; then
+		warn "validation failed for $dir"
+		warn "skipping $dir"
+		skipped_dirs+=("$dir")
+		continue
+	fi
+
+	project=$(cat "$project_dir/assignment_id") || \
+	  panic "cannot get assignment ID"
+	student_name=$(cat "$project_dir/student_name") || \
+	  panic "cannot get student name"
+	student_id=$(cat "$project_dir/student_id") || \
+	  panic "cannot get student ID"
+	section=$(cat "$project_dir/section") || \
+	  panic "cannot get section"
+	mangled_student_name=$(echo "$student_name" | sed 's/[^a-zA-Z]/_/g') || \
+	  panic "cannot compute mangled student name"
+
+	packages=($("$ari_info" -a "$project" packages)) || \
+	  panic "cannot get package"
+	package_opts=()
+	for package in "${packages[@]}"; do
+		optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+		  panic "cannot get optional"
+		if [ "$precheck" -ne 0 -a "$optional" -ne 0 ]; then
+			continue
+		fi
+		package_opts+=(-p "$package")
+	done
+
+	opts=()
+	opts+=(-D "$debug_level")
+	opts+=(-d "$project_dir")
+	opts+=("${package_opts[@]}")
+	#if [ "$precheck" -ne 0 ]; then
+	#	opts+=(-O)
+	#fi
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running ari_generate ${opts[@]}"
+	fi
+	"$ari_generate" "${opts[@]}" || \
+	  panic "generation failed"
+
+	opts=()
+	opts+=(-v)
+	opts+=(-D "$debug_level")
+	opts+=(-d "$project_dir")
+	opts+=(-c)
+	if [ "$reproducible" -ne 0 ]; then
+		opts+=(-R)
+	fi
+	#if [ "$precheck" -ne 0 ]; then
+	#	opts+=(-O)
+	#fi
+	#opts+=(-u)
+	opts+=("${package_opts[@]}")
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running ari_build ${opts[@]}"
+	fi
+	"$ari_build" "${opts[@]}" || \
+	  panic "build failed"
+
+	if [ "$precheck" -eq 0 ]; then
+		opts=()
+		opts+=(-v)
+		opts+=(-D "$debug_level")
+		opts+=(-d "$project_dir")
+		#opts+=(-u)
+		if [ "$reproducible" -ne 0 ]; then
+			opts+=(-R)
+		fi
+		opts+=("${package_opts[@]}")
+		if [ "$debug_level" -ge 1 ]; then
+			eecho "Testing"
+		fi
+		"$ari_test" "${opts[@]}" || \
+		  panic "test failed"
+
+		opts=()
+		opts+=(-D "$debug_level")
+		opts+=(-d "$project_dir")
+		opts+=(-o "$project_dir/report.pdf")
+		#opts+=(-u)
+		if [ "$reproducible" -ne 0 ]; then
+			opts+=(-R)
+		fi
+		opts+=("${package_opts[@]}")
+		if [ "$debug_level" -ge 1 ]; then
+			eecho "Reporting"
+		fi
+		"$ari_report" "${opts[@]}" || \
+		  panic "report failed"
+
+		alt_report_file="$project_dir/report-$project-$section-$mangled_student_name-$student_id.pdf"
+		if [ -L "$alt_report_file" -o -e "$alt_report_file" ]; then
+			rm -f "$alt_report_file" || \
+			  panic "cannot remove file $alt_report_file"
+		fi
+		ln -s report.pdf "$alt_report_file" || panic "cannot make link"
+	fi
+
+done
+
+if [ "${#dirs[@]}" -gt 1 ]; then
+	cat <<- EOF
+	############################################################
+	Summary
+	############################################################
+	EOF
+	echo "Number of skipped items: ${#skipped_dirs[@]}"
+	if [ ${#skipped_dirs[@]} -gt 0 ]; then
+		echo "Skipped items:"
+		for dir in "${skipped_dirs[@]}"; do
+			echo "$dir"
+		done
+	fi
+fi

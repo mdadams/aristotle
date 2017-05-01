@@ -1,0 +1,5 @@
+#! /usr/bin/env bash
+
+$ARI_BIN_DIR/ari_args -e -- "$0" "$@"
+$ARI_BIN_DIR/ari_copytree "$ARI_DIST_DIR" "$ARI_SOURCE_DIR"
+#exit 1

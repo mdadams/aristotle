@@ -1,0 +1,293 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+# Note:
+# The a2ps command will produce zero pages of PostScript output for an empty
+# file.  So, the case of an empty file must be handled specially.
+
+################################################################################
+#
+################################################################################
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+ari_mktemp="$cmd_dir/ari_mktemp"
+
+################################################################################
+#
+################################################################################
+
+preprocess()
+{
+	local recode=$(type -P recode) || recode=
+	if [ -x "$recode" ]; then
+		# Convert from UTF-8 to Latin-1 encoding.
+		"$recode" UTF-8..Latin-1
+	else
+		# The recode command is not available.
+		#cat
+		return 1
+	fi
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-f format
+	    Set the format for the next input file to format.
+	-i input_file
+	    Add the file input_file to the list of input files.
+	-o output_file
+	    Set the output file to output_file.
+	-t title
+	    Set the title for the next input file to title.
+	-u upness
+	    Set the upness (for printing) for the next input file to upness.
+	-v
+	    Increase the verbosity level of output.
+	-l numbering
+	    Set the line numbering for the next input file to numbering.
+	EOF
+	exit 2
+}
+
+################################################################################
+#
+################################################################################
+
+#a2ps_base_opts+=(-M letter)
+a2ps_base_opts+=(-M Letterdj)
+a2ps_base_opts+=(-T4)
+a2ps_base_opts+=(--header=)
+a2ps_base_opts+=(--footer=)
+a2ps_base_opts+=(--left-footer=)
+a2ps_base_opts+=(--right-footer=)
+
+cleanup=1
+format_tab=()
+file_tab=()
+title_tab=()
+upness_tab=()
+numbering_tab=()
+language_tab=()
+cur_format=""
+cur_title=""
+cur_upness=
+cur_numbering=0
+cur_language=
+verbose=0
+debug_level=0
+
+while getopts D:f:i:o:t:u:vl option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	f)
+		cur_format="$OPTARG";;
+	i)
+		file_tab+=("$OPTARG")
+		format_tab+=("$cur_format")
+		title_tab+=("$cur_title")
+		upness_tab+=("$cur_upness")
+		numbering_tab+=("$cur_numbering")
+		language_tab+=("$cur_language")
+		cur_format=
+		cur_title=
+		cur_upness=
+		cur_numbering=0
+		cur_language=
+		;;
+	o)
+		out_file="$OPTARG";;
+	t)
+		cur_title="$OPTARG";;
+	u)
+		cur_upness="$OPTARG";;
+	v)
+		verbose=$((verbose+1));;
+	l)
+		cur_numbering=1;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $(($OPTIND - 1))
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ -z "$out_file" ]; then
+	usage "no output file specified"
+fi
+
+user_name=$(whoami) || panic "cannot determine user"
+host_name=$(hostname) || panic "cannot determine hostname"
+tmp_dir_template="/tmp/ari_topdf-${user_name}@${host_name}-$$-XXXXXXXX"
+
+tmp_files=()
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+base_name="$tmp_dir/$$"
+blank_file="${base_name}-blank"
+
+echo > "$blank_file" || panic
+
+for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
+
+	file="${file_tab[$file_no]}"
+	format="${format_tab[$file_no]}"
+	title="${title_tab[$file_no]}"
+	upness="${upness_tab[$file_no]}"
+	numbering="${numbering_tab[$file_no]}"
+	language="${language_tab[$file_no]}"
+
+	tmp_file="${base_name}"$file_no.pdf
+
+	case "$file" in
+	*.pdf)
+		binary=1;;
+	*)
+		binary=0;;
+	esac
+
+	if [ -z "$format" ]; then
+		case "$file" in
+		*.pdf)
+			format=pdf;;
+		*)
+			format=text;;
+		esac
+	fi
+
+	if [ -z "$language" ]; then
+		case "$file" in
+		*.cpp|*.hpp)
+			language=cxx;;
+		*.c|*.h)
+			language=c;;
+		*[Mm]akefile)
+			language=make;;
+		*)
+			language=;;
+		esac
+	fi
+
+	if [ "$binary" -eq 0 ]; then
+		num_lines=$(count_lines "$file") || panic
+	else
+		num_lines=0
+	fi
+
+	if [ "$verbose" -ge 1 ]; then
+		echo "ari_topdf file $file format $format title $title"
+	fi
+
+	a2ps_opts=()
+
+	if [ -n "$title" ]; then
+		a2ps_opts+=("--center-title=$title")
+	else
+		a2ps_opts+=(--center-title="$(basename $file)")
+	fi
+
+	if [ -n "$upness" ]; then
+		a2ps_opts+=("-$upness")
+	else
+		a2ps_opts+=("-1")
+	fi
+
+	if [ "$numbering" -ne 0 -a "$num_lines" -gt 0 ]; then
+		a2ps_opts+=(--line-numbers=1)
+	fi
+
+	if [ -n "$language" ]; then
+		a2ps_opts+=(--pretty-print="$language")
+	fi
+
+	if [ $verbose -gt 0 ]; then
+		echo "format $format"
+	fi
+
+	case "$format" in
+	text-utf8)
+		if [ "$num_lines" -eq 0 ]; then
+			file="$blank_file"
+		fi
+		cat "$file" | preprocess | \
+		  a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
+		  2> /dev/null | \
+		  ps2pdf - - > "$tmp_file" || \
+		  panic "cannot convert to PDF format"
+		;;
+	text)
+		if [ "$num_lines" -eq 0 ]; then
+			file="$blank_file"
+		fi
+		#a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - "$file" \
+		cat "$file" | a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
+		  2> /dev/null | \
+		  ps2pdf - - > "$tmp_file" || \
+		  panic "cannot convert to PDF format"
+		;;
+	pdf)
+		cp "$file" "$tmp_file" || panic "cannot copy file"
+		;;
+	esac
+
+	tmp_files+=("$tmp_file")
+
+done
+
+pdfjam_opts=()
+pdfjam_opts+=(--paper letter)
+#pdfjam_opts+=(--landscape)
+#pdfjam_opts+=(--nup 2x1)
+pdfjam_opts+=("${tmp_files[@]}")
+if [ "$out_file" = "-" ]; then
+	pdfjam_opts+=(--outfile /dev/stdout)
+else
+	pdfjam_opts+=(--outfile "$out_file")
+fi
+if [ "$debug_level" -ge 1 ]; then
+	echo "Running pdfjam ${pdfjam_opts[@]}"
+fi
+pdfjam "${pdfjam_opts[@]}" 2> /dev/null || panic "pdfjam failed"
+
+for file in "${tmp_files[@]}"; do
+	rm "$file" || panic "cannot remove file $file"
+done
+
+if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
+	rm -rf "$tmp_dir" || echo "cannot remove temporary directory $tmp_dir"
+	true
+fi

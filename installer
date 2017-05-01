@@ -1,0 +1,129 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+
+panic()
+{
+	echo "ERROR: $@"
+	exit 1
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] -d install_dir
+	options:
+	-d install_dir
+	    Set the install directory to install_dir.
+	-a assignments_dir
+	    Set the default assignments directory to assignments_dir.
+	-c
+	    Remove old files first.
+	for example:
+	    $0 -d /usr/local/sde/packages/aristotle
+	    $0 -d /usr/local/sde/packages/aristotle -c
+	(avoid -c if symlink for assignments might be deleted)
+	EOF
+	exit 2
+}
+
+tree_copy()
+{
+	local source_dir="$1"
+	local destination_dir="$2"
+	(cd "$source_dir" && tar -cf - .) | \
+	  (cd "$destination_dir" && tar -xf -)
+}
+
+tree_adjust_perms()
+{
+	if [ $# -ne 2 ]; then
+		return 2
+	fi
+	local mode="$1"
+	local dir="$2"
+	if [ "$mode" = public ]; then
+		#find "$dir" \( -type f -o -type d \) -exec chmod go=u,g-w,o-w {} \;
+		find "$dir" \( -type f -o -type d \) -print0 | xargs -n 1 -0 chmod go=u,g-w,o-w
+	else
+		#find "$dir" \( -type f -o -type d \) -exec chmod g=,o= {} \;
+		find "$dir" \( -type f -o -type d \) -print0 | xargs -n 1 -0 chmod g=,o=
+	fi
+}
+
+clean=0
+install_dir=
+assignments_dir=
+
+while getopts cd:a: opt; do
+	case $opt in
+	d)
+		install_dir="$OPTARG";;
+	a)
+		assignments_dir="$OPTARG";;
+	c)
+		clean=1;;
+	*)
+		usage "invalid option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$install_dir" ]; then
+	usage "no installation directory specified"
+fi
+
+umask 022
+
+if [ "$clean" -ne 0 ]; then
+	if [ -d "$install_dir" ]; then
+		rm -rf "$install_dir" || panic
+		if [ -d "$install_dir" ]; then
+			panic "cannot remove directory $install_dir"
+		fi
+	fi
+fi
+
+for dir in bin etc; do
+	target_dir="$install_dir/$dir"
+	if [ ! -d "$target_dir" ]; then
+		mkdir -p "$target_dir" || panic
+	fi
+	tree_copy "$cmd_dir/$dir" "$target_dir" || panic
+done
+
+target_file="$install_dir/etc/assignments_default"
+if [ ! \( -L "$target_file" -o -e "$target_file" \) ]; then
+	if [ -z "$assignments_dir" ]; then
+		assignments_dir="assignments"
+	fi
+	ln -s "$assignments_dir" "$target_file" || \
+	  panic "cannot make symlink $target_file"
+fi
+
+tree_adjust_perms public "$install_dir" || \
+  panic "cannot set permissions (permissions may be not correct)"

@@ -1,0 +1,349 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+perror()
+{
+	echo "ERROR: $@"
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] repo_url
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-b branch
+	    Set the branch to be tagged to branch.
+	-t tag
+	    Set the tag to tag.
+	-d
+	    Delete the tag.
+	-c
+	    Check (i.e., verify) the tag.
+	-k signing_key
+	    Set the signing key to signing_key.
+	-C
+	    Disable cleanup.
+	-v
+	    Increase the verbosity level of output.
+	-g gpg_program
+	    Set the gpg program to gpg_program.
+	EOF
+	exit 2
+}
+
+user_name=$(whoami) || panic "cannot determine user"
+host_name=$(hostname) || panic "cannot determine hostname"
+tmp_dir_template="/tmp/ari_git_tagremote-${user_name}@${host_name}-$$-XXXXXXXX"
+
+ari_mktemp="$cmd_dir/ari_mktemp"
+
+cleanup=1
+branch=
+tag=
+operation=add
+signing_key=
+debug_level=0
+verbose=0
+gpg_program=
+
+while getopts D:b:t:dck:vg: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	b)
+		branch="$OPTARG";;
+	t)
+		tag="$OPTARG";;
+	d)
+		operation=delete;;
+	c)
+		operation=verify;;
+	k)
+		signing_key="$OPTARG";;
+	C)
+		cleanup=0;;
+	v)
+		verbose=$((verbose + 1));;
+	g)
+		gpg_program="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ne 1 ]; then
+	usage "no repository specified"
+fi
+repo_url="$1"
+
+if [ -z "$tag" ]; then
+	usage "no tag specified"
+fi
+if [ "$operation" == add -a -z "$signing_key" ]; then
+	usage "no signing key specified"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	discard_stdout=none
+	discard_stderr=none
+	discard_stdout_stderr=none
+else
+	discard_stdout=stdout
+	discard_stderr=stderr
+	discard_stdout_stderr=stdout_stderr
+fi
+
+command_status=0
+while true; do
+
+	tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template")
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot make temporary directory"
+		break
+	fi
+
+	basename=$(basename "$repo_url" .git)
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot get basename"
+		break
+	fi
+	git_dir="$tmp_dir/git"
+	message_file="$tmp_dir/message.txt"
+
+	mkdir -p "$git_dir"
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot make directory $git_dir"
+		break
+	fi
+
+	actual_time=$(date "+%Y-%m-%d %H:%M:%S")
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot get time"
+		break
+	fi
+
+	cat > "$message_file" <<- EOF
+	Assignment Submission Tag
+
+	Nominal Time: ${target_time:-unspecified}
+	Actual Time: $actual_time
+
+	Any attempt to remove this tag will be deemed an act of academic fraud
+	(i.e., cheating).
+	EOF
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot make message"
+		break
+	fi
+
+	message=$(cat "$message_file")
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot get message"
+		break
+	fi
+
+	conditionally_discard_output "$discard_stdout_stderr" \
+	  git clone "$repo_url" "$git_dir"
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot clone repository"
+		break
+	fi
+
+	# Check for an empty repository.
+	GIT_DIR="$git_dir/.git" \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git rev-list -n 1 --all
+	if [ $? -ne 0 ]; then
+		empty_repo=1
+	else
+		empty_repo=0
+	fi
+	if [ "$empty_repo" -ne 0 ]; then
+		command_status="$EXIT_STATUS_EMPTY_REPO"
+		perror "empty repository"
+		break
+	fi
+
+	if [ -n "$branch" ]; then
+		(chdir "$git_dir" && \
+		  conditionally_discard_output "$discard_stdout_stderr" \
+		  git checkout "$branch")
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "cannot checkout branch/tag $branch"
+			break
+		fi
+	fi
+
+	if [ "$operation" == add ]; then
+		gpg --list-keys "$signing_key"
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "no such key $signing_key"
+			break
+		fi
+		GIT_DIR="$git_dir/.git" \
+		  conditionally_discard_output "$discard_stdout_stderr" \
+		  git config user.signingkey "$signing_key"
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "cannot set signing key"
+			break
+		fi
+		if [ -n "$gpg_program" ]; then
+			#GIT_DIR="$git_dir/.git" \
+			(chdir "$git_dir" &&
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git config gpg.program "$gpg_program")
+			if [ $? -ne 0 ]; then
+				command_status=1
+				perror "cannot set gpg program"
+				break
+			fi
+		fi
+
+	fi
+
+	# Check for existence of tag.
+	GIT_DIR="$git_dir/.git" \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git rev-parse -q --verify "$tag"
+	if [ $? -ne 0 ]; then
+		tag_found=0
+	else
+		tag_found=1
+	fi
+
+	case "$operation" in
+	add)
+		if [ "$tag_found" -eq 0 ]; then
+			GIT_DIR="$git_dir/.git" \
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git tag -s "$tag" -m "$message"
+			if [ $? -ne 0 ]; then
+				command_status=1
+				perror "cannot create signed tag"
+				break
+			fi
+			GIT_DIR="$git_dir/.git" \
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git push origin "$tag"
+			if [ $? -ne 0 ]; then
+				command_status=1
+				perror "cannot push signed tag"
+				break
+			fi
+			if [ "$verbose" -ge 1 ]; then
+				echo "added tag to repository"
+			fi
+		else
+			command_status=1
+			perror "tag already in repository"
+			break
+		fi
+		;;
+	delete)
+		if [ "$tag_found" -ne 0 ]; then
+			GIT_DIR="$git_dir/.git" \
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git push --delete origin "$tag"
+			if [ $? -ne 0 ]; then
+				command_status=1
+				perror "cannot delete remote tag"
+				break
+			fi
+			GIT_DIR="$git_dir/.git" \
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git tag -d "$tag"
+			if [ $? -ne 0 ]; then
+				command_status=1
+				perror "cannot delete local tag"
+				break
+			fi
+			if [ "$verbose" -ge 1 ]; then
+				echo "deleted tag from repository"
+			fi
+		else
+			command_status=1
+			perror "tag not in repository"
+			break
+		fi
+		;;
+	verify)
+		if [ "$tag_found" -ne 0 ]; then
+			GIT_DIR="$git_dir/.git" \
+			  conditionally_discard_output "$discard_stdout_stderr" \
+			  git tag -v "$tag"
+			verify_status=$?
+			if [ "$verify_status" -ne 0 ]; then
+				command_status="$EXIT_STATUS_VERIFY_TAG_FAILED"
+				perror "tag verification failure"
+				break
+			else
+				if [ "$verbose" -ge 1 ]; then
+					echo "tag verification success"
+				fi
+			fi
+			if [ "$verbose" -ge 1 ]; then
+				# Output verification results in more desirable format.
+				GIT_DIR="$git_dir/.git" git verify-tag "$tag" 2>&1
+			fi
+		else
+			command_status="$EXIT_STATUS_VERIFY_TAG_FAILED"
+			perror "tag not found in repository"
+			break
+		fi
+		;;
+	*)
+		;;
+	esac
+
+	break
+done
+
+if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
+	rm -rf "$tmp_dir" || echo "cannot remove temporary directory $tmp_dir"
+	true
+fi
+
+exit "$command_status"

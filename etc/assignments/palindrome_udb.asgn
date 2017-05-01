@@ -1,0 +1,43 @@
+# A short name or description for the assignment.
+name "Palindrome Test"
+# The files that must be included in the assignment submission.
+required_files IDENTIFICATION.txt CMakeLists.txt is_palindrome.cpp
+# The files from the original submission that are to be included in the
+# generated report.
+report_files CMakeLists.txt is_palindrome.cpp
+# The packages defined for this assignment (namely, one called "original").
+packages original
+
+# A short name or description of the "original" package.
+package-original/name "The original code exactly as submitted by the student."
+# The build targets for the "original" package.
+package-original/builds is_palindrome
+# The test targets for the "original" package.
+package-original/tests is_palindrome
+
+# The build tool is user-specified.
+package-original/build_tool user
+# Use CMake to configure.
+package-original/configure cmake \
+  -H${ARI_SOURCE_DIR} -B${ARI_DERIVED_DIR} \
+  -DCMAKE_INSTALL_PREFIX=${ARI_INSTALL_DIR}
+# Use CMake to build.
+package-original/build \
+  cmake --build ${ARI_DERIVED_DIR} --target ${ARI_BUILD_TARGET}
+
+# A short name or description for the "is_palindrome" build target.
+package-original/build-is_palindrome/name "Build the is_palindrome program."
+
+# A short name or description for the "is_palindrome" test target.
+package-original/test-is_palindrome/name "Test the is_palindrome program."
+# Only perform test if associated build target successfully built.
+package-original/test-is_palindrome/depends_on build-is_palindrome
+# The maximum time (in seconds) allowed for the test.
+package-original/test-is_palindrome/timeout 10
+# The program/script to be invoked to perform the test.
+# Note: ${ARI_ASSIGNMENTS_DIR} is the directory containing this assignment
+# definition file and ${ARI_DERIVED_DIR} is the directory containing the
+# program to be tested.
+package-original/test-is_palindrome/test \
+  ${ARI_ASSIGNMENTS_DIR}/../private/bin/palindrome-is_palindrome-test \
+  ${ARI_DERIVED_DIR}

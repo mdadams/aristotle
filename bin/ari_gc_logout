@@ -1,0 +1,95 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-v
+	    Increase the verbosity level of output.
+	EOF
+	exit 2
+}
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+gc_username_file="$user_config_dir/gc_username"
+gc_password_file="$user_config_dir/gc_password"
+gc_token_file="$user_config_dir/gc_token"
+gc_id_file="$user_config_dir/gc_id"
+gc_note_file="$user_config_dir/gc_note"
+
+debug_level=0
+verbose=0
+
+while getopts D:v option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+if [ -f "$gc_token_file" ]; then
+	gc_token=$(cat "$gc_token_file") || panic "cannot get token"
+	gc_id=$(cat "$gc_id_file") || panic "cannot get id"
+	gc_user=$(cat "$gc_username_file") || panic "cannot get user"
+
+	output=$(curl -s -i -X DELETE -u "$gc_user" \
+	  "https://api.github.com/authorizations/$gc_id")
+	curl_status=$?
+	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
+	if [ "$verbose" -ge 1 ]; then
+		echo "curl status: $curl_status"
+		echo "HTTP status: $http_status"
+		echo "output:"
+		echo "$output"
+	fi
+	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
+		panic "operation failed"
+	fi
+fi
+
+for file in "$gc_login_file" "$gc_username_file" "$gc_password_file" \
+  "$gc_token_file" "$gc_id_file" "$gc_note_file"; do
+	if [ -f "$file" ]; then
+		rm "$file" || echo "cannot remove file $file"
+	fi
+done

@@ -1,0 +1,145 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+default_branch=master
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	Usage: $0 [options] repository_url
+
+	Description:
+	Perform a basic sanity check of the assignment submission stored
+	in the Git repository with the specified URL.
+
+	Options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-b branch
+	    Set the branch (or commit) that is to be checked to branch.
+	    The default value is $default_branch.
+	-C
+	    Disable cleanup (i.e., disable removal of temporary directory).
+	    This may be useful for debugging.
+	-v
+	    Increase the verbosity level of output.
+	-r report_file
+	    Specify an output file for the report.
+	-t input_type
+	    Set the input type to input_type.
+	    By default, the input type is deduced based on the suffix used
+	    in the name of the input source.
+	    For example, if the name of the input source ends with the suffix
+	    ".git", the input type set to a Git repository, and if the name
+	    ends with the suffix ".zip", the input type is set to a Zip archive.
+	EOF
+	exit 2
+}
+
+if [ "$SDE_NAME" != "elec486" ]; then
+	echo "WARNING: use sde_shell -n elec486"
+fi
+
+user=$(whoami) || panic "cannot determine user"
+host=$(hostname) || panic "cannot determine hostname"
+tmp_dir_template="/tmp/assignment_precheck-${user}@${host}-$$-XXXXXXXX"
+
+ari_precheck="$cmd_dir/ari_precheck"
+ari_mktemp="$cmd_dir/ari_mktemp"
+
+verbose=0
+cleanup=1
+branch="$default_branch"
+debug_level=${ARI_DEBUG_LEVEL:-0}
+report_file=
+in_type=
+
+while getopts CD:b:vr:t: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	b)
+		branch="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	C)
+		cleanup=0;;
+	r)
+		report_file="$OPTARG";;
+	t)
+		in_type="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ne 1 ]; then
+	usage "no repository URL specified"
+fi
+
+input="$1"
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+
+if [ "$verbose" -ge 1 ]; then
+	echo "temporary directory: $tmp_dir"
+fi
+
+options=()
+options+=(-D "$debug_level")
+options+=(-v)
+options+=(-d "$tmp_dir")
+if [ -n "$in_type" ]; then
+	options+=(-t "$in_type")
+fi
+options+=(-F)
+if [ -n "$branch" ]; then
+	options+=(-s "$branch")
+fi
+if [ "$verbose" -ge 1 ]; then
+	echo "Running $ari_precheck ${options[@]} $input"
+fi
+"$ari_precheck" "${options[@]}" "$input"
+command_status=$?
+
+if [ "$command_status" -eq 0 -a -n "$report_file" ]; then
+	cp $tmp_dir/report.pdf "$report_file"
+	if [ $? -ne 0 ]; then
+		echo "cannot copy report file"
+	fi
+	command_status=1
+fi
+
+if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
+	rm -rf "$tmp_dir" || echo "cannot remove temporary directory"
+fi
+
+exit "$command_status"

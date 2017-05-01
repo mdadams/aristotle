@@ -1,0 +1,39 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+user_config_dir="$HOME/.aristotle"
+gpg_passphrase_file="$user_config_dir/gpg_passphrase"
+
+if [ -f "$gpg_passphrase_file" ]; then
+	options=()
+	#options+=(-q)
+	#options+=(--no-tty)
+	options+=(--batch)
+	options+=(--no-use-agent)
+	options+=(--passphrase-file "$gpg_passphrase_file")
+	gpg "${options[@]}" "$@"
+else
+	gpg "$@"
+fi

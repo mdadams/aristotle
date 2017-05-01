@@ -1,0 +1,87 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "usage: $0 ..."
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-t wakeup_time
+	    Wait until the time wakeup_time.
+	    Example wakeup times:
+	        17:00
+	        "2017-04-01 17:00"
+	-v
+	    Increase the verbosity level of output.
+	EOF
+	exit 2
+}
+
+verbose=0
+target_time=
+
+while getopts D:t:v option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	v)
+		verbose=1;;
+	t)
+		target_time="$OPTARG";;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$target_time" ]; then
+	target_epoch=$(date -d "$target_time" +%s) || panic
+else
+	target_epoch=$(date +%s) || panic
+fi
+
+current_epoch=$(date +%s) || panic
+delay=$(echo "$target_epoch - $current_epoch" | bc) || panic
+
+if [ "$verbose" -ne 0 ]; then
+	echo "current epoch: $current_epoch"
+	echo "target epoch: $target_epoch"
+	echo "wait time (in seconds): $delay"
+fi
+
+is_negative=$(echo "$delay < 0" | bc) || panic
+if [ "$is_negative" -eq 0 ]; then
+	sleep "$delay"
+fi
+
+if [ "$verbose" -ne 0 ]; then
+	date
+fi

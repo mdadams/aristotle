@@ -1,0 +1,5 @@
+name "Jane Doe"
+student_id "V12345678"
+email "jdoe@uvic.ca"
+section "T01"
+assignment "hello_cmake"

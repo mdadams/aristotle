@@ -1,0 +1,244 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] [repo_names...]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-o organization
+	    Set the organization to organization.
+	-a assignment
+	    Set the assignment to assignment.
+	-w time
+	    Wait until the time time.
+	-b branch
+	    Set the branch to branch.
+	-t tag
+	    Set the tag to tag.
+	-d
+	    Delete the specified tag.
+	-c
+	    Check (i.e., verify) the specified tag.
+	-k signing_key
+	    Set the signing key to signing_key.
+	-v
+	    Increase the verbosity level of output.
+	-q
+	    Decrease the verbosity level of output.
+	-A
+	    Process all assignments.
+	EOF
+	exit 2
+}
+
+abs_cmd_dir=$(readlink -f "$cmd_dir") || \
+  panic "cannot get absolute path for command directory"
+
+ari_sleep_until="$cmd_dir/ari_sleep_until"
+ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
+ari_git_tagremote="$cmd_dir/ari_git_tagremote"
+ari_gpg="$abs_cmd_dir/ari_gpg"
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+
+target_time=
+organization=
+assignment=
+branch=
+tag=
+operation=add
+signing_key=
+debug_level=0
+verbose=0
+all_assignments=0
+delay=1
+check_ssh_key=1
+
+while getopts ZAD:o:w:b:a:t:dck:vq option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	o)
+		organization="$OPTARG";;
+	a)
+		assignment="$OPTARG";;
+	w)
+		target_time="$OPTARG";;
+	b)
+		branch="$OPTARG";;
+	t)
+		tag="$OPTARG";;
+	d)
+		operation=delete;;
+	c)
+		operation=verify;;
+	k)
+		signing_key="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	q)
+		verbose=$((verbose - 1));;
+	A)
+		all_assignments=1;;
+	Z)
+		check_ssh_key=0;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+repos=()
+if [ $# -gt 0 ]; then
+	repos=("$@")
+fi
+
+if [ -z "$organization" ]; then
+	usage "no organization specified"
+fi
+if [ "$all_assignments" -eq 0 -a -z "$assignment" ]; then
+	usage "no assignment specified"
+fi
+if [ -z "$tag" ]; then
+	usage "no tag specified"
+fi
+if [ "$operation" == add -a -z "$signing_key" ]; then
+	usage "no signing key specified"
+fi
+
+if [ "$check_ssh_key" -ne 0 ]; then
+	check_for_ssh_key || panic "no ssh key is available"
+fi
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ -n "$target_time" ]; then
+	"$ari_sleep_until" -t "$target_time" || panic "sleep failed"
+fi
+
+if [ "${#repos[@]}" -eq 0 ]; then
+	opts=()
+	opts+=(-o "$organization")
+	if [ -n "$assignment" ]; then
+		opts+=(-a "$assignment")
+	fi
+	repos=($("$ari_gc_lsrepo" "${opts[@]}")) || \
+	  panic "cannot get repository URLs"
+fi
+
+failed_repos=()
+empty_repos=()
+failed_verify_repos=()
+repo_no="-1"
+
+for repo in "${repos[@]}"; do
+
+	repo_no=$((repo_no + 1))
+
+	if [ "$repo_no" -gt 0 ]; then
+		if [ -n "$delay" ]; then
+			sleep "$delay"
+		fi
+	fi
+
+	if [ "${#repos[@]}" -ge 2 -a "$verbose" -ge 1 ]; then
+		echo "Processing $repo"
+	fi
+
+	clone_url="ssh://git@github.com/$organization/$repo.git"
+
+	opts=()
+	if [ -n "$branch" ]; then
+		opts+=(-b "$branch")
+	fi
+	case "$operation" in
+	add)
+		opts+=(-k "$signing_key")
+		;;
+	delete)
+		opts+=(-d)
+		;;
+	verify)
+		opts+=(-c)
+		;;
+	esac
+	if [ "$verbose" -ge 1 ]; then
+		opts+=(-v)
+	fi
+	"$ari_git_tagremote" \
+	  "${opts[@]}" -D "$debug_level" -t "$tag" -g "$ari_gpg" \
+	  "$clone_url"
+	status=$?
+	if [ $status -ne 0 ]; then
+		failed_repos+=("$repo")
+		if [ "$status" -eq "$EXIT_STATUS_EMPTY_REPO" ]; then
+			empty_repos+=("$repo")
+			echo "ERROR: could not process empty repository $repo"
+		elif [ "$status" -eq "$EXIT_STATUS_VERIFY_TAG_FAILED" ]; then
+			failed_verify_repos+=("$repo")
+			echo "ERROR: verify failed for repository $repo"
+		else
+			bad_repos+=("$repo")
+			echo "ERROR: could not process repository $repo"
+		fi
+		continue
+	fi
+	if [ "$verbose" -ge 1 ]; then
+		echo "tag $operation operation successful"
+	fi
+
+done
+
+if [ "${#failed_repos[@]}" -ne 0 ]; then
+	echo "ERRORS WERE ENCOUNTERED!"
+	echo "The following repositories could not be processed:"
+	for repo in "${bad_repos[@]}"; do
+		echo "    $repo"
+	done
+	echo "The following repositories had verify failures:"
+	for repo in "${failed_verify_repos[@]}"; do
+		echo "    $repo"
+	done
+	echo "The following repositories were empty:"
+	for repo in "${empty_repos[@]}"; do
+		echo "    $repo"
+	done
+	panic "one or more repositories could not be processed"
+fi
+

@@ -1,0 +1,84 @@
+Properties
+==========
+
+assignment properties
+
+	name
+	required_files
+	whitelisted_files
+	blacklisted_files
+	report_files
+	validate
+	packages
+
+package properties
+
+	name
+	optional
+	generate
+	build_tool (valid values: auto, cmake, make, user)
+	configure
+	build
+	builds
+	tests
+	out_of_source_build
+
+build target properties
+
+	name
+	executables
+	depends_on
+	optional
+
+test target properties
+
+	name
+	test
+	timeout
+	depends_on
+	optional
+	manual
+
+
+Identification
+==============
+
+name
+student_id
+email
+section
+assignment
+
+
+Commands
+========
+
+ari_import
+ari_process
+ari_precheck
+
+ari_validate
+ari_generate
+ari_build
+ari_test
+ari_report
+
+assignment_precheck
+
+ari_gc_*
+ari_git_*
+
+
+Installation Prerequisites
+==========================
+
+numerous standard Unix commands, including:
+awk
+python
+a2ps
+pdfjam
+recode
+
+required for GitHub Classroom functionality:
+jq
+

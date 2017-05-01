@@ -1,0 +1,252 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+default_assignments_dir="$cmd_dir/../etc/default_assignments"
+assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+
+get_package_name()
+{
+	echo "$1" | tr '/' ' ' | awk '{print $1;}' | tr '-' ' ' | awk '{print $2;}' -
+}
+
+get_build_name()
+{
+	echo "$1" | tr '/' ' ' | awk '{print $2;}' | tr '-' ' ' | awk '{print $2;}' -
+}
+
+get_test_name()
+{
+	echo "$1" | tr '/' ' ' | awk '{print $2;}' | tr '-' ' ' | awk '{print $2;}' -
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] tag
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d field_sep
+	    Set the field-seperator character to field_sep.
+	-f input_file
+	    Set the input file to input_file.
+	-a assignment_id
+	    Set the assignment ID to assignment_id.
+	-e
+	    Enable variable substitution.
+	EOF
+	exit 2
+}
+
+ari_tvp="$cmd_dir/ari_tvp"
+debug_level=${ARI_DEBUG_LEVEL:-0}
+in_file=
+project=
+field_sep=$'\n'
+env_var_subst=0
+
+while getopts d:a:D:f:e option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		field_sep="$OPTARG";;
+	f)
+		in_file="$OPTARG";;
+	a)
+		project="$OPTARG";;
+	e)
+		env_var_subst=1;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -lt 1 ]; then
+	usage "no operation specified"
+fi
+tag="$1"
+shift 1
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ -z "$in_file" ]; then
+	if [ -z "$project" ]; then
+		panic
+	fi
+	in_file="$assignments_dir/$project.asgn"
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "Querying property $tag"
+fi
+
+default_valid=0
+default_value=()
+
+if [[ $tag =~ ^name$ ]]; then
+	default_valid=1
+	default_value=($(basename "$in_file" .asgn)) || panic
+elif [[ $tag =~ ^required_files$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^whitelisted_files$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^blacklisted_files$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^report_files$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^validate$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/name$ ]]; then
+	default_valid=1
+	default_value=($(get_package_name "$tag")) || panic
+elif [[ $tag =~ ^package-[^/]*/generate$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/build_tool$ ]]; then
+	default_valid=1
+	default_value=(auto)
+elif [[ $tag =~ ^package-[^/]*/configure$ ]]; then
+	default_valid=0
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/build$ ]]; then
+	default_valid=0
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/optional$ ]]; then
+	default_valid=1
+	default_value=(0)
+elif [[ $tag =~ ^package-[^/]*/builds$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/out_of_source_build$ ]]; then
+	default_valid=1
+	default_value=(1)
+elif [[ $tag =~ ^package-[^/]*/build-[^/]*/name$ ]]; then
+	default_valid=1
+	default_value=($(get_build_name "$tag")) || panic
+elif [[ $tag =~ ^package-[^/]*/build-[^/]*/executables$ ]]; then
+	# NOTE: build name
+	default_valid=1
+	default_value=($(get_build_name "$tag")) || panic
+elif [[ $tag =~ ^package-[^/]*/build-[^/]*/depends_on$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/build-[^/]*/optional$ ]]; then
+	default_valid=1
+	default_value=(0)
+elif [[ $tag =~ ^package-[^/]*/tests$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/test-[^/]*/name$ ]]; then
+	default_valid=1
+	default_value=($(get_test_name "$tag")) || panic
+elif [[ $tag =~ ^package-[^/]*/test-[^/]*/timeout$ ]]; then
+	default_valid=1
+	default_value=("$((5 * 60))")
+elif [[ $tag =~ ^package-[^/]*/test-[^/]*/optional$ ]]; then
+	default_valid=1
+	default_value=(1)
+elif [[ $tag =~ ^package-[^/]*/test-[^/]*/depends_on$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^package-[^/]*/test-[^/]*/manual$ ]]; then
+	default_valid=1
+	default_value=(0)
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "default valid: $default_valid"
+	if [ "$default_valid" -ne 0 ]; then
+		eecho "default value: ${default_value[@]}"
+	fi
+fi
+
+config_dir=$(dirname "$in_file") || panic "cannot get directory name"
+
+buffer=$("$ari_tvp" -D "$debug_level" -i "$in_file" -t "$tag" -d "$field_sep")
+status=$?
+if [ "$status" -eq 0 ]; then
+	#eecho "$buffer"
+#	if [ "$env_var_subst" -ne 0 ]; then
+#		buffer=$(echo "$buffer" | envsubst) || panic
+#	fi
+	saved_ifs="$IFS"
+	IFS=$'\ca'
+	set -f
+	value=($(echo "$buffer")) || panic
+	set +f
+	IFS="$saved_ifs"
+fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "number of values: ${#value[@]}"
+	eecho "values:"
+	for i in "${!value[@]}"; do
+		eecho "    values[$i] = ${value[$i]}"
+	done
+fi
+if [ "$status" -ne 0 ]; then
+	valid=0
+	if [ "$status" -eq 10 ]; then
+		if [ "$default_valid" -ne 0 ]; then
+			value=("${default_value[@]}")
+			valid=1
+		fi
+	fi
+else
+	valid=1
+fi
+if [ "$valid" -eq 0 ]; then
+	panic "cannot get value for key $tag"
+fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "number of values: ${#value[@]}"
+	eecho "values: ${value[@]}"
+fi
+#if [ "${#value[@]}" -ge 1 ]; then
+#if [[ $tag =~ ^validate$ ]]; then
+#	value[0]=$(pathname_relative_to "$config_dir" "${value[0]}") || \
+#	  panic "cannot determine path name ${value[0]} relative to $config_dir"
+#elif [[ $tag =~ ^package-[^/]*/generate$ ]]; then
+#	value[0]=$(pathname_relative_to "$config_dir" "${value[0]}") || \
+#	  panic "cannot determine path name ${value[0]} relative to $config_dir"
+#elif [[ $tag =~ ^package-[^/]*/test-[^/]*/test$ ]]; then
+#	value[0]=$(pathname_relative_to "$config_dir" "${value[0]}") || \
+#	  panic "cannot determine path name ${value[0]} relative to $config_dir"
+#fi
+#fi
+
+#echo "${value[@]}"
+join_by "$field_sep" "${value[@]}"

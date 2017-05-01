@@ -1,0 +1,337 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+function panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-t tag
+	    Set the property to be queried to tag.
+	-i input_file
+	    Set the input file to input_file.
+	-d field_delim
+	    Set the field-separator character to field_delim.
+	EOF
+	exit 2
+}
+
+in_file=
+tag=
+debug_level=0
+field_sep=$'\ca'
+
+while getopts D:i:t:d: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	t)
+		tag="$OPTARG";;
+	i)
+		in_file="$OPTARG";;
+	d)
+		field_sep="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$in_file" ]; then
+	usage "no input file specified"
+fi
+if [ -z "$tag" ]; then
+	usage "no key specified"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	debug=1
+else
+	debug=0
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "Querying tag $tag"
+fi
+
+if [ ! -f "$in_file" ]; then
+	panic "no such input file $in_file"
+fi
+
+#cat "$in_file" | \
+  awk -v the_tag="$tag" \
+  -v debug="$debug" \
+  -v squote="'" \
+  -v field_sep="$field_sep" \
+  '
+	BEGIN {
+		found = 0;
+		newline = "\n";
+		dquote = "\"";
+		bslash = "\\";
+		lbrace = "{";
+		rbrace = "}";
+		active_field = 0;
+		active_record = 0;
+		record_no = -1;
+		field_no = -1;
+		quoted = "";
+		if (debug) {
+			err = "/dev/stderr";
+		} else {
+			err = "/dev/null";
+		}
+		printf "the_key %s\n", the_key > err;
+	}
+	END {
+		if (!found) {
+			printf "Record not found\n" > err;
+			exit 10;
+		}
+	}
+	{ 
+		line = $0;
+		line = line newline;
+		n = length(line);
+		i = 1;
+		while (i <= n) {
+			if (i - 1 >= 1) {
+				prev_c = substr(line, i - 1, 1);
+			} else {
+				prev_c = "";
+			}
+			c = substr(line, i, 1);
+			printf "line=%d rec=%d field=%d, active_field=%d, c=%s, buffer=%s\n", NR, record_no, field_no, active_field, c, buffer > err;
+			if (active_field) {
+				# We are currently processing characters in a field.
+				if (c == squote && (quoted == "" || quoted == squote)) {
+					# We are either inside single quotes or not quoting, and
+					# the character is a single quote.
+					if (quoted == squote) {
+						# End single quotes.
+						quoted = "";
+					} else {
+						# Start single quotes.
+						quoted = squote;
+					}
+				} else if (c == dquote &&
+				  (quoted == "" || quoted == dquote)) {
+					# We are either inside double quotes or not quoting, and
+					# the character is a double quote.
+					if (quoted == dquote) {
+						# End double quotes.
+						quoted = "";
+					} else {
+						# Start double quotes.
+						quoted = dquote;
+					}
+				} else if (quoted == "" && c == bslash) {
+					# We are not quoting, and the character is a backslash.
+					# Move to the next character.
+					++i;
+					if (i <= n) {
+						# We have not reached end of line.
+						c = substr(line, i, 1);
+						buffer = buffer c;
+					}
+				} else if (quoted == "" && c == "#") {
+					# We are not quoting, and the character is a hash.
+printf "XXX %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
+					if (field_no == 0) {
+						tag = buffer;
+						if (tag == the_tag) {
+							found = 1;
+							printf "Found query tag %s.\n", tag > err;
+						}
+						printf "Found tag %s.\n", tag > err;
+					} else if (tag == the_tag) {
+						# OUTPUT: Print the field.
+						#if (field_no >= 2) {
+						#	printf "%c", field_sep;
+						#}
+						#printf "%s", buffer;
+						printf "%s%s", buffer, field_sep;
+						#exit 0;
+					}
+					--i;
+					printf "Terminating field.\n" > err;
+					active_field = 0;
+					++field_no;
+					buffer = "";
+					tag = "";
+					printf "Terminating record.\n" > err;
+					if (found) {
+						exit 0;
+					}
+					active_record = 0;
+					printf "active_record=%d, active_field=%d\n",
+					  active_record, active_field > err;
+				} else if (quoted == "" && (c == " " || c == "\t" ||
+				  c == newline)) {
+					# We are not quoting, and the character is a space or tab.
+printf "XXX %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
+					if (field_no == 0) {
+						tag = buffer;
+						if (tag == the_tag) {
+							found = 1;
+							printf "Found query tag %s.\n", tag > err;
+						}
+						printf "Found tag %s.\n", tag > err;
+					} else if (tag == the_tag) {
+						# OUTPUT: Print the field.
+						#if (field_no >= 2) {
+						#	printf "%c", field_sep;
+						#}
+						#printf "%s", buffer;
+						printf "%s%s", buffer, field_sep;
+						#exit 0;
+					}
+					printf "Terminating field.\n" > err;
+					active_field = 0;
+					++field_no;
+					buffer = "";
+					if (c == newline) {
+						tag = "";
+						printf "Terminating record.\n" > err;
+						if (found) {
+							exit 0;
+						}
+						field_no = -1;
+						active_record = 0;
+					}
+					printf "active_record=%d, active_field=%d\n",
+					  active_record, active_field > err;
+				} else if ((quoted == "" || quoted == dquote) && c == "$") {
+					# variable substitution
+					printf "starting variable substitution\n" > err;
+					if (i + 3 > n) {
+						printf "Not enough characters.\n" > err;
+						exit 1;
+					}
+					++i;
+					c = substr(line, i, 1);
+					if (c != lbrace) {
+						printf "Expecting left brace.\n" > err;
+						exit 1;
+					}
+					++i;
+					start_index = i;
+					c = "";
+					while (i <= n) {
+						c = substr(line, i, 1);
+						if (c == rbrace) {
+							break;
+						}
+						++i;
+					}
+					if (c != rbrace) {
+						printf "No right brace found.\n" > err;
+						exit 1;
+					}
+					var_name = substr(line, start_index, i - start_index);
+					printf "Substituted value for variable %s is %s.\n", var_name,
+					  ENVIRON[var_name] > err;
+					buffer = buffer ENVIRON[var_name];
+				} else {
+					# The character is to be taken literally.
+					buffer = buffer c;
+				}
+
+			} else {
+				# We are not currently processing characters in a field.
+				if (c == "#") {
+					# The character is a hash.
+					tag = "";
+					printf "Terminating record.\n" > err;
+					if (field_no >= 0) {
+						field_no = -1;
+						buffer = ""
+						quoted = "";
+					}
+					active_record = 0;
+					# Skip the remainder of the line.
+					i = n;
+				} else if (c == bslash) {
+					++i;
+					if (i <= n) {
+						c = substr(line, i, 1);
+						if (c == newline) {
+							# We have encountered a line continuation.
+							printf "Line continuation.\n" > err;
+						} else if (c == " " || c == "\t") {
+							# Eat whitespace.
+						} else {
+							# We have reached the start of a field.
+							active_field = 1;
+							# Put back the character.
+							--i;
+							printf "active_record=%d, active_field=%d\n",
+							  active_record, active_field > err;
+						}
+					}
+				} else if (c == " " || c == "\t") {
+					# The character is a space or tab.
+					# Just eat the whitespace.
+				} else if (c == newline) {
+					if (active_record) {
+						tag = "";
+						printf "Terminating record.\n" > err;
+					}
+					active_record = 0;
+					field_no = 0;
+				} else {
+					# We have reached the start of a field.
+					if (!active_record) {
+						# We have reached the first field in the record.
+						active_record = 1;
+						printf "Starting record.\n" > err;
+						++record_no;
+						field_no = 0;
+						#quoted = "";
+					}
+					active_field = 1;
+					printf "active_record=%d, active_field=%d\n",
+					  active_record, active_field > err;
+					# Put back the character.
+					--i;
+				}
+			}
+			# Move to the next character.
+			++i;
+		}
+	}
+' "$in_file"

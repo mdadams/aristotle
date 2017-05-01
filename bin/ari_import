@@ -1,0 +1,196 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+#etc_dir="$cmd_dir/../etc"
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] input_source..."
+	Options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-p project_dir_prefix
+	    Set the project directory prefix to project_dir_prefix.
+	-a assignment_id
+	    Set the assignment ID to assignment_id.
+	-i in_source
+	    Set the input source to input_source.
+	-t in_type
+	    Set the input type to input_type.
+	-s in_subtype
+	    Set the input subtype to input_subtype.
+	-c
+	    Check the signature.
+	-v
+	    Increase the verbosity level.
+	EOF
+	exit 2
+}
+
+ari_import1="$cmd_dir/ari_import1"
+
+project_dir=
+project_dir_prefix=
+default_project=
+in_sources=()
+in_type=
+in_subtype=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
+verify_sig=0
+
+while getopts vd:p:D:i:a:t:s:c option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		project_dir_prefix="$OPTARG";;
+	a)
+		default_project="$OPTARG";;
+	i)
+		in_sources+=("$OPTARG");;
+	t)
+		in_type="$OPTARG";;
+	s)
+		in_subtype="$OPTARG";;
+	c)
+		verify_sig=1;;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+for in_source in "$@"; do
+	in_sources+=("$in_source")
+done
+
+if [ -n "$project_dir" -a  ${#in_sources[@]} -ge 2 ]; then
+	usage "cannot specify a single project directory with multiple inputs"
+fi
+
+if [ -n "$project_dir_prefix" -a -n "$project_dir" ]; then
+	usage "cannot specify a project directory and directory prefix"
+fi
+
+#if [ -z "$in_type" ]; then
+#	usage "no input type specified"
+#fi
+
+failed_sources=()
+
+for in_source in "${in_sources[@]}"; do
+
+	if [ -z "$in_type" ]; then
+		case "$in_source" in
+		*.tar.gz|*.tgz)
+			in_type=tgz;;
+		*.zip)
+			in_type=zip;;
+		*.git)
+			in_type=git;;
+		*)
+			in_type=dir;;
+		esac
+	fi
+
+	case "$in_type" in
+	zip)
+		base=$(basename "$in_source" .zip) || panic
+		;;
+	tgz)
+		base=$(basename "$in_source" .tar.gz) || panic
+		;;
+	directory|dir)
+		base=$(basename "$in_source") || panic
+		;;
+	git)
+		base=$(basename "$in_source" .git) || panic
+		;;
+	esac
+
+	if [ -n "$project_dir_prefix" ]; then
+		project_dir="${project_dir_prefix}$base"
+	fi
+
+	if [ "$verbose" -ge 1 -a ${#in_source[@]} -gt 1 ]; then
+		cat <<- EOF
+		############################################################
+		Processing $in_source
+		############################################################
+		EOF
+	fi
+
+	opts=()
+	if [ -n "$in_subtype" ]; then
+		opts+=(-s "$in_subtype")
+	fi
+	if [ "$verify_sig" -ne 0 ]; then
+		opts+=(-c)
+	fi
+	"$ari_import1" \
+	  -D "$debug_level" -d "$project_dir" -t "$in_type" -i "$in_source" \
+	  "${opts[@]}"
+	if [ $? -ne 0 ]; then
+		failed_sources+=("$in_source")
+		rm -rf "$project_dir" || \
+		  panic "cannot remove directory $project_dir"
+	fi
+
+done
+
+if [ "$verbose" -ge 1 -a ${#failed_sources[@]} -gt 0 ]; then
+	cat <<- EOF
+	############################################################
+	Summary
+	############################################################
+	EOF
+	echo "Number of failed items: ${#failed_sources[@]}"
+	echo "Failed items:"
+	for in_source in "${failed_sources[@]}"; do
+		echo "$in_source"
+	done
+fi
+
+if [ ${#failed_sources[@]} -gt 0 ]; then
+	exit_status=1
+else
+	exit_status=0
+fi
+exit "$exit_status"

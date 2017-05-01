@@ -1,0 +1,238 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] [repo_name...]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-p output_prefix
+	    Set the output prefix to output_prefix.
+	-o org_name
+	    Set the organization to org_name.
+	-a assignment
+	    Set the assignment to assignment.
+	-b branch_or_tag_name
+	    The branch/tag to use for making the release.
+	-t output_type
+	    Set the output type to output_type.
+	    Allowed values: dir, zip, tgz
+	-c
+	    Check (i.e., verify) the signature of the tag.
+	-v
+	    Increase the verbosity level of output.
+	-q
+	    Decrease the verbosity level of output.
+	EOF
+	exit 2
+}
+
+ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
+ari_git_makerelease="$cmd_dir/ari_git_makerelease"
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+
+org_name=
+assignment=
+debug_level=0
+out_prefix=
+out_type=dir
+verbose=0
+verify_sig=0
+branch=
+
+delay=1
+#delay=
+
+while getopts D:o:p:a:t:vqcb: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	p)
+		out_prefix="$OPTARG";;
+	o)
+		org_name="$OPTARG";;
+	a)
+		assignment="$OPTARG";;
+	b)
+		branch="$OPTARG";;
+	t)
+		out_type="$OPTARG";;
+	c)
+		verify_sig=1;;
+	v)
+		verbose=$((verbose + 1));;
+	q)
+		verbose=$((verbose - 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$org_name" ]; then
+	usage "no organization specified"
+fi
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ $# -eq 0 ]; then
+	opts=()
+	opts+=(-o "$org_name")
+	if [ -n "$assignment" ]; then
+		opts+=(-a "$assignment")
+	fi
+	repo_names=($("$ari_gc_lsrepo" "${opts[@]}")) || \
+	  panic "cannot get repository URLs"
+else
+	repo_names=("$@")
+fi
+
+if [ -z "$branch" -a "$verify_sig" -ne 0 ]; then
+	usage "tag verification requested but no tag specified (via -b option)"
+fi
+
+failures=()
+repo_no="-1"
+
+for repo_name in "${repo_names[@]}"; do
+
+	repo_no=$((repo_no + 1))
+
+	if [ "$repo_no" -gt 0 ]; then
+		if [ -n "$delay" ]; then
+			sleep "$delay"
+		fi
+	fi
+
+	if [ "${#repo_names[@]}" -ge 2 -a "$verbose" -ge 1 ]; then
+		echo "Processing $repo_name"
+	fi
+
+	repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+	basename="$repo_name"
+
+	case "$out_type" in
+	tgz)
+		extension=tgz;;
+	zip)
+		extension=zip;;
+	esac
+
+	if [ -n "$extension" ]; then
+		out_file="${out_prefix}$basename.$extension"
+	else
+		out_file="${out_prefix}$basename"
+	fi
+
+	info_file="${out_prefix}$basename.txt"
+
+	start_time=$(date "+%Y-%m-%d %H:%M:%S")
+	if [ $? -ne 0 ]; then
+		failures+=("$repo_name")
+		echo "ERROR: cannot get time"
+		continue
+	fi
+
+	dirname=$(dirname "$out_file")
+	if [ $? -ne 0 ]; then
+		failures+=("$repo_name")
+		echo "ERROR: cannot get dirname"
+		continue
+	fi
+	if [ ! -d "$dirname" ]; then
+		mkdir -p "$dirname"
+		if [ $? -ne 0 ]; then
+			failures+=("$repo_name")
+			echo "ERROR: cannot make directory $dirname"
+			continue
+		fi
+	fi
+
+	opts=()
+	if [ -n "$branch" ]; then
+		opts+=(-b "$branch")
+	fi
+	if [ "$verify_sig" -ne 0 ]; then
+		opts+=(-c)
+	fi
+	if [ "$verbose" -ge 1 ]; then
+		opts+=(-v)
+	fi
+	git_makerelease_output=$("$ari_git_makerelease" \
+	  "${opts[@]}" -D "$debug_level" \
+	  -t "$out_type" -v "$repo_url" "$out_file")
+	status=$?
+	if [ "$status" -ne 0 ]; then
+		failures+=("$repo_name")
+		if [ "$status" -eq "$EXIT_STATUS_VERIFY_TAG_FAILED" ]; then
+			echo "ERROR: unable to verify tag for repository $repo_name"
+		fi
+		echo "ERROR: cannot copy repository $repo_name"
+		continue
+	fi
+
+	end_time=$(date "+%Y-%m-%d %H:%M:%S")
+	if [ $? -ne 0 ]; then
+		failures+=("$repo_name")
+		echo "ERROR: cannot get time"
+		continue
+	fi
+
+	cat > "$info_file" <<- EOF
+	Repository name: $repo_name
+	Repository URL: $repo_url
+	Copy start time: $start_time
+	Copy end time: $end_time
+	$git_makerelease_output
+	EOF
+	if [ $? -ne 0 ]; then
+		failures+=("$repo_name")
+		echo "ERROR: cannot write information file $info_file"
+		continue
+	fi
+
+done
+
+if [ "${#failures[@]}" -ne 0 ]; then
+	echo "The following repositories were not copied successfully:"
+	for failure in "${failures[@]}"; do
+		echo "    $failure"
+	done
+	panic "failed"
+fi

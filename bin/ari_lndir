@@ -1,0 +1,117 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+usage()
+{
+	echo "$@" 1>&2
+	cat <<- EOF
+	usage: $0 [options] from_dir [to_dir]
+	to_dir defaults to the current working directory
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-n
+	    Only print what would be done without doing it.
+	-v
+	    Increase the verbosity level.
+	EOF
+	exit 2
+}
+
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
+just_print=0
+while getopts nvD: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	n)
+		just_print=1;;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ge 1 ]; then
+	from_dir="$1"
+	if [ $# -ge 2 ]; then
+		if [ $# -gt 2 ]; then
+			panic "too many arguments"
+		fi
+		to_dir="$2"
+	else
+		to_dir=.
+	fi
+else
+	usage "too few arguments"
+fi
+
+if [ ! -d "$to_dir" ]; then
+	usage "destination is not a directory"
+fi
+
+if [ "$verbose" -ge 1 ]; then
+	echo "from $from_dir"
+	echo "to $to_dir"
+fi
+
+chdir "$to_dir" || panic "cannot change working directory to $to_dir"
+
+# We must perform this check after changing the current working directory,
+# since from_dir is interpreted relative to to_dir.
+if [ ! -d "$from_dir" ]; then
+	usage "source is not a directory"
+fi
+
+alt_from_dir=$(chdir "$from_dir" && pwd)
+cur_dir=$(pwd)
+if [ "$alt_from_dir" = "$cur_dir" ]; then
+	usage "source and destination directories must be different"
+fi
+
+if [ "$just_print" -ne 0 ]; then
+	echo=echo
+else
+	echo=""
+fi
+
+(chdir "$from_dir" || exit 1; find -L . -mindepth 1 -type d -print0) | \
+  xargs -0 -L 1 -I'{}' ${echo} mkdir -p '{}' || panic "cannot make directories"
+
+(chdir "$from_dir" || exit 1; find -L . -mindepth 1 -type f -print0) | \
+  xargs -0 -L 1 -I'{}' ${echo} ln -s $from_dir/'{}' '{}' || panic "cannot link files"
+

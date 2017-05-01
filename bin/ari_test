@@ -1,0 +1,288 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+abs_cmd_dir=$(absolute_pathname "$cmd_dir") || \
+  panic "cannot get command directiory"
+#etc_dir="$cmd_dir/../etc"
+
+default_assignments_dir="$cmd_dir/../etc/default_assignments"
+assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-p package_id
+	    Add the package package_id to the list of packages to process.
+	-O
+	    Skip optional packages.
+	-u
+	    Skip unavailable packages (and do not treat as an error).
+	-v
+	    Increase the verbosity level.
+	EOF
+	exit 2
+}
+
+ari_info="$abs_cmd_dir/ari_info"
+ari_locate="$abs_cmd_dir/ari_locate"
+ari_tee="$abs_cmd_dir/ari_tee"
+ari_timeout="$abs_cmd_dir/ari_timeout"
+ari_calc="$abs_cmd_dir/ari_calc"
+
+reproducible=0
+project_dir=$("$ari_locate" -q) || project_dir=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
+packages=()
+skip_unavailable=0
+skip_optional=0
+
+while getopts RD:d:p:vuO option; do
+	case "$option" in
+	R)
+		reproducible=1;;
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		packages+=("$OPTARG");;
+	O)
+		skip_optional=1;;
+	u)
+		skip_unavailable=1;;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ne 0 ]; then
+	usage "unexpected command-line arguments"
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	tee_opts=(-c)
+else
+	tee_opts=()
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+project_dir=$("$ari_locate" -d "$project_dir" -q) || project_dir=
+
+# Note: The value of project_dir must be an absolute pathname.
+# This is necessary to ensure that the various pathnames derived from
+# project_dir will be valid, even if the current working directory is
+# changed.
+project_dir=$(absolute_pathname "$project_dir") || project_dir=
+
+if [ -z "$project_dir" ]; then
+	panic "no project directory"
+fi
+
+project=$(cat "$project_dir/assignment_id") || \
+  panic "cannot get assignment ID"
+
+if [ "${#packages[@]}" -eq 0 ]; then
+	packages=($("$ari_info" -a "$project" packages)) || \
+	  panic "cannot get package list"
+fi
+
+#if [ "$verbose" -ge 1 ]; then
+#	print_status
+#fi
+
+for package in "${packages[@]}"; do
+
+	package_dir="$project_dir/package-$package"
+	source_dir="$package_dir/source"
+	derived_dir="$package_dir/derived"
+	install_dir="$package_dir/install"
+
+	configure_dir="$package_dir/configure"
+	configure_status_file="$configure_dir/status"
+	configure_log_file="$configure_dir/log"
+
+	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+	  panic "cannot get optional"
+
+	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
+		if [ "$debug_level" -ge 1 ]; then
+			echo "skipping optional package"
+		fi
+		continue
+	fi
+
+	if [ ! -d "$package_dir" ]; then
+		if [ "$skip_unavailable" -ne 0 ]; then
+			continue
+		fi
+		panic "missing package $package"
+	fi
+
+	targets=($("$ari_info" -a "$project" package-"$package"/tests)) || \
+	  panic "cannot get test targets"
+
+	for target in "${targets[@]}"; do
+
+		optional=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/optional)) || \
+		  panic "cannot get test targets"
+		if [ "$skip_optional" -ne 0 -a "$optional" -ne 0 ]; then
+			continue
+		fi
+
+		dependencies=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/depends_on)) || \
+		  panic "cannot get dependencies"
+		missing_dependency=0
+		for dependency in "${dependencies[@]}"; do
+			status_file="$package_dir/$dependency/status"
+			if [ -f "$status_file" ]; then
+				buffer=$(cat "$status_file") || \
+				  panic "cannot get contents of status file"
+				if [ "$buffer" -ne 0 ]; then
+					missing_dependency=1
+				fi
+			else
+				missing_dependency=1
+			fi
+		done
+		if [ "$missing_dependency" -ne 0 ]; then
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "test" "$target" \
+				  "D" "" "" ""
+			fi
+			continue
+		fi
+
+		"$ari_tee" "${tee_opts[@]}" <<- EOF
+		########################################
+		Testing
+		Package: $package
+		Target: $target
+		########################################
+		EOF
+
+		test_dir="$package_dir/test-$target"
+		test_log_file="$test_dir/log"
+		test_status_file="$test_dir/status"
+		test_time_file="$test_dir/time"
+		test_result_file="$test_dir/result"
+
+		if [ ! -d "$test_dir" ]; then
+			mkdir -p "$test_dir" || panic "cannot make directory $test_dir"
+		fi
+
+		manual=($("$ari_info" \
+		  -a "$project" package-"$package"/test-$target/manual)) || \
+		  panic "cannot get manual property"
+		if [ "$manual" -ne 0 ]; then
+			print_status "$reproducible" "$package" "test" "$target" \
+			  "M" "" "" ""
+			continue
+		fi
+
+		saved_ifs="$IFS"
+		IFS=$'\ca'
+		test_program=($( \
+		  ARI_BIN_DIR="$cmd_dir" \
+		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+		  ARI_SOURCE_DIR="$source_dir" \
+		  ARI_DERIVED_DIR="$derived_dir" \
+		  ARI_INSTALL_DIR="$install_dir" \
+		  "$ari_info" \
+		  -a "$project" -e -d "$IFS" \
+		  package-"$package"/test-"$target"/test))
+		status=$?
+		IFS="$saved_ifs"
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get test program"
+		fi
+		test_timeout=($("$ari_info" \
+		  -a "$project" package-"$package"/test-"$target"/timeout)) || \
+		  panic "cannot get test timeout"
+
+		if [ ! -x "${test_program[0]}" ]; then
+			panic "cannot find test program ${test_program[@]}"
+		fi
+		if [ "$debug_level" -ge 1 ]; then
+			eecho "Running ${test_program[@]}"
+		fi
+		test_start_time=$(time_since_epoch) || \
+		  panic "cannot get start time"
+		ARI_BIN_DIR="$cmd_dir" \
+		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+		  ARI_SOURCE_DIR="$source_dir" \
+		  ARI_DERIVED_DIR="$derived_dir" \
+		  ARI_INSTALL_DIR="$install_dir" \
+		  ARI_TEST_RESULT_FILE="$test_result_file" \
+		  "$ari_timeout" -t "$test_timeout" \
+		  "${test_program[@]}" < /dev/null |& \
+		  "$ari_tee" "${tee_opts[@]}" "$test_log_file"
+		status=${PIPESTATUS[0]}
+		test_end_time=$(time_since_epoch) || \
+		  panic "cannot get end time"
+		echo "$status" > "$test_status_file"
+		test_time=$("$ari_calc" -f "%.1f" \
+		  "$test_end_time - $test_start_time") || \
+		  panic "cannot calculate test time"
+		echo "$test_time" > "$test_time_file" || \
+		  panic "cannot test time file"
+		if [ "$test_timeout" -ne 0 -a \
+		  \( "$status" -eq 124 -o "$status" -eq 137 \) ]; then
+			echo "ERROR: test time limit exceeded ($test_timeout seconds)" \
+			  >> "$test_log_file"
+		fi
+		log_length=$(count_lines "$test_log_file") || \
+		  panic "cannot get log length"
+		if [ "$verbose" -ge 1 ]; then
+			if [ -f "$test_result_file" ]; then
+				test_result=$(cat "$test_result_file") || panic
+			else
+				#test_result="?/?"
+				test_result=""
+			fi
+			print_status "$reproducible" "$package" "test" "$target" \
+			  "$status" "$test_time" "$test_result" "$log_length"
+		fi
+
+	done
+done
+

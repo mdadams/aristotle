@@ -1,0 +1,345 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+################################################################################
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+################################################################################
+
+################################################################################
+
+usage()
+{
+	echo "$0: bad usage: $@"
+	cat <<- EOF
+	Usage:
+	$0 [options] program [program_option...]
+
+	Options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-v
+	    Increase the verbosity level of output.
+	-i input_file
+	    Set the file containing the program input to input_file.
+	-I input_data
+	    Set the program input to the string input_data
+	-o expected_output_file
+	    Set the file containing the expected program output to
+	    expected_output_file.
+	-O expected_output_data
+	    Set the expected program output to the string expected_output_data.
+	-l result_file
+	    Set the result file to result_file.
+	    The default is standard output.
+	-n
+	    Use numeric comparison.
+	-w
+	    Ignore whitespace.
+	-e type
+	    Set the error tolerance type to type.
+	-t value
+	    Set the error tolerance value to value.
+	-T timeout_value
+	    Set the timeout value to timeout_value.
+	-C
+	    Do not perform cleanup.
+	EOF
+	exit 2
+}
+
+ari_timeout="$cmd_dir/ari_timeout"
+ari_tee="$cmd_dir/ari_tee"
+
+max_lines=25
+verbose=0
+debug_level=0
+numeric=0
+ignore_space=0
+err_tol_type=""
+err_tol_value=0
+ndiff_program=ndiff-2.00
+cleanup=1
+timeout_value=
+input_file=
+expected_output_file=
+result_file="-"
+expected_data=
+expected_data_valid=0
+input_data=
+input_data_valid=0
+
+while getopts Ce:t:D:i:l:no:wvT:O:I: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	i)
+		input_file="$OPTARG";;
+	I)
+		input_data="$OPTARG"
+		input_data_valid=1
+		;;
+	o)
+		expected_output_file="$OPTARG";;
+	O)
+		expected_data="$OPTARG"
+		expected_data_valid=1
+		;;
+	l)
+		result_file="$OPTARG";;
+	n)
+		numeric=1;;
+	w)
+		ignore_space=1;;
+	e)
+		err_tol_type="$OPTARG";;
+	t)
+		err_tol_value="$OPTARG";;
+	T)
+		timeout_value="$OPTARG";;
+	C)
+		cleanup=0;;
+	*)
+		usage;;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -eq 0 ]; then
+	usage "no program file specified"
+fi
+program_file="$1"
+shift 1
+program_options=("$@")
+
+if [ "$input_data_valid" -eq 0 -a -z "$input_file" ]; then
+	usage "no input specified"
+fi
+if [ "$expected_data_valid" -eq 0 -a -z "$expected_output_file" ]; then
+	usage "no expected output specified"
+fi
+if [ -z "$result_file" ]; then
+	usage "no log file specified"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+user=$(whoami) || panic "cannot get user name"
+host=$(hostname) || panic "cannot get host name"
+tmp_actual_file_template="/tmp/ari_cmpout-${user}@${host}-actual_XXXXXXXX.txt"
+tmp_expected_file_template="/tmp/ari_cmpout-${user}@${host}-expected_XXXXXXXX.txt"
+tmp_input_file_template="/tmp/ari_cmpout-${user}@${host}-input_XXXXXXXX.txt"
+
+################################################################################
+
+if [ ! -x "$program_file" ]; then
+	panic "no such executable $program_file"
+fi
+
+if [ "$numeric" -ne 0 ]; then
+	ndiff=$(type -P "$ndiff_program") || panic "cannot find ndiff program"
+	if [ ! -x "$ndiff" ]; then
+		panic "no such executable $ndiff"
+	fi
+fi
+
+if [ "$result_file" != "-" -a -f "$result_file" ]; then
+	rm -f "$result_file" || panic "cannot remove file $result_file"
+fi
+
+if [ "$input_data_valid" -eq 0 ]; then
+	if [ ! -f "$input_file" ]; then
+		panic "missing input data file $input_file"
+	fi
+fi
+
+if [ "$expected_data_valid" -eq 0 ]; then
+	if [ ! -f "$expected_output_file" ]; then
+		panic "missing expected output data file $expected_output_file"
+	fi
+fi
+
+command_status=0
+tmp_expected_file=
+
+while true; do
+
+	tmp_actual_file=$(mktemp "$tmp_actual_file_template")
+	if [ $? -ne 0 ]; then
+		echo "cannot get temporary file"
+		command_status=3
+		break
+	fi
+
+	if [ "$input_data_valid" -ne 0 ]; then
+		tmp_input_file=$(mktemp "$tmp_input_file_template")
+		if [ $? -ne 0 ]; then
+			echo "cannot get temporary file"
+			command_status=3
+			break
+		fi
+		printf "$input_data" > "$tmp_input_file"
+		if [ $? -ne 0 ]; then
+			echo "cannot make temporary file"
+			command_status=3
+			break
+		fi
+		input_file="$tmp_input_file"
+	fi
+
+	if [ "$expected_data_valid" -ne 0 ]; then
+		tmp_expected_file=$(mktemp "$tmp_expected_file_template")
+		if [ $? -ne 0 ]; then
+			echo "cannot get temporary file"
+			command_status=3
+			break
+		fi
+		printf "$expected_data" > "$tmp_expected_file"
+		if [ $? -ne 0 ]; then
+			echo "cannot make temporary file"
+			command_status=3
+			break
+		fi
+		expected_output_file="$tmp_expected_file"
+	fi
+
+	diff_options=()
+	if [ "$ignore_space" -ne 0 ]; then
+		#diff_options+=(-w)
+		diff_options+=(-b)
+	fi
+
+	ndiff_options=()
+	if [ "$numeric" -ne 0 ]; then
+		case "$err_tol_type" in
+		abs)
+			ndiff_options+=(-abserr "$err_tol_value")
+			ndiff_options+=(-relerr 0)
+			;;
+		rel)
+			ndiff_options+=(-relerr "$err_tol_value")
+			ndiff_options+=(-abserr 0)
+			;;
+		esac
+	fi
+
+	if [ "$verbose" -ge 1 ]; then
+		echo "Running $program_file ${program_options[@]}"
+	fi
+	"$ari_timeout" -t "$timeout_value" \
+	  "$program_file" "${program_options[@]}" \
+	  < "$input_file" > "$tmp_actual_file" 2> /dev/null
+	status=$?
+	if [ -n "$timeout_value" -a \
+	  \( "$status" -eq 124 -o "$status" -eq 137 \) ]; then
+		eecho "program $program terminated due to run time exceeding $timeout_value seconds"
+	fi
+	if [ "$numeric" -ne 0 ]; then
+		"$ndiff" "${ndiff_options[@]}" -quiet \
+		  "$expected_output_file" "$tmp_actual_file" \
+		  > /dev/null 2> /dev/null
+		diff_status=$?
+	else
+		diff "${diff_options[@]}" -q "$expected_output_file" \
+		  "$tmp_actual_file" >& /dev/null
+		diff_status=$?
+	fi
+	if [ "$diff_status" -ne 0 -a "$diff_status" -ne 1 ]; then
+		command_status=3
+		break
+	fi
+	if [ "$diff_status" -ne 0 ]; then
+		command_status=1
+	fi
+
+	if [ "$diff_status" -ne 0 ]; then
+		input_data=$(cat "$input_file" | head -$max_lines) || \
+		  panic "cannot get input data"
+		expected_output_data=$(cat "$expected_output_file") || \
+		  panic "cannot get expected output data"
+		actual_output_data=$(cat "$tmp_actual_file") || \
+		  panic "cannot get actual output data"
+		if [ "$numeric" -ne 0 ]; then
+			diff_data=$("$ndiff" \
+			  "${ndiff_options[@]}" "$expected_output_file" "$tmp_actual_file")
+		else
+			diff_data=$(diff "${diff_options[@]}" "$expected_output_file" \
+			  "$tmp_actual_file" 2> /dev/null)
+		fi
+
+		#cat >> "$result_file" <<- EOF
+		if [ "$result_file" = "-" ]; then
+			tee_options=(-c)
+		else
+			tee_options=("$result_file")
+		fi
+		"$ari_tee" "${tee_options[@]}" <<- EOF
+		############################################################
+		INPUT [first $max_lines lines only] ($input_file):
+		$input_data
+
+		EXPECTED OUTPUT ($expected_output_file):
+		$expected_output_data
+
+		ACTUAL OUTPUT:
+		$actual_output_data
+
+		DIFFERENCE BETWEEN EXPECTED AND ACTUAL OUTPUT (in Unix diff format):
+		$diff_data
+		############################################################
+		EOF
+		if [ $? -ne 0 ]; then
+			command_status=3
+			break
+		fi
+	fi
+
+	break
+
+done
+
+if [ "$cleanup" -ne 0 ]; then
+	if [ -f "$tmp_actual_file" ]; then
+		rm "$tmp_actual_file" || echo "cannot remove $tmp_actual_file"
+	fi
+	if [ -n "$tmp_expected_file" -a -f "$tmp_expected_file" ]; then
+		rm "$tmp_expected_file" || echo "cannot remove $tmp_expected_file"
+	fi
+	if [ -n "$tmp_input_file" -a -f "$tmp_input_file" ]; then
+		rm "$tmp_input_file" || echo "cannot remove $tmp_input_file"
+	fi
+fi
+
+if [ "$command_status" -eq 1 ]; then
+	echo "actual output does not match expected output"
+fi
+
+exit "$command_status"

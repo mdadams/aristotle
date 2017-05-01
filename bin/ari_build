@@ -1,0 +1,537 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
+source "$cmd_dir/utilities" || exit 1
+#etc_dir="$cmd_dir/../etc"
+
+default_assignments_dir="$cmd_dir/../etc/default_assignments"
+assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	$0
+	Build one or more packages.
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-p package_id
+	    Add package package_id to list of packages to build.
+	-c
+	    Force a clean build.
+	    (This will force a fresh configure and build.)
+	-O 
+	    Skip the processing of optional packages.
+	-u
+	    Skip unavailable packages (and do not treat as an error).
+	-v
+	    Increase verbosity level.
+	EOF
+	exit 2
+}
+
+ari_info="$abs_cmd_dir/ari_info"
+ari_locate="$abs_cmd_dir/ari_locate"
+ari_lndir="$abs_cmd_dir/ari_lndir"
+ari_tee="$abs_cmd_dir/ari_tee"
+ari_mktemp="$abs_cmd_dir/ari_mktemp"
+ari_calc="$abs_cmd_dir/ari_calc"
+
+user_name=`whoami` || panic "cannot get user name"
+host_name=`hostname` || panic "cannot get host name"
+unique_id="$user_name@$host_name@$$"
+tmp_dir_template="/tmp/ari_build-$unique_id-XXXXXXXX"
+
+reproducible=0
+cleanup=1
+build_tool=make
+force_clean=0
+project_dir=$("$ari_locate" -q) || project_dir=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+skip_optional=0
+skip_unavailable=0
+verbose=0
+packages=()
+
+while getopts RD:d:cOp:vu option; do
+	case "$option" in
+	R)
+		reproducible=1;;
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		packages+=("$OPTARG");;
+	c)
+		force_clean=1;;
+	O)
+		skip_optional=1;;
+	u)
+		skip_unavailable=1;;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -ne 0 ]; then
+	usage "unexpected command-line arguments"
+fi
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+if [ "$debug_level" -ge 1 -o "$verbose" -ge 2 ]; then
+	tee_opts=(-c)
+else
+	tee_opts=()
+fi
+
+project_dir=$("$ari_locate" -d "$project_dir" -q) || project_dir=
+
+# Note: The value of project_dir must be an absolute pathname.
+# This is necessary to ensure that the various pathnames derived from
+# project_dir will be valid, even if the current working directory is
+# changed.
+project_dir=$(absolute_pathname "$project_dir") || project_dir=
+
+if [ -z "$project_dir" ]; then
+	panic "no project directory"
+fi
+
+#rm -f "$summary_1_file" "$summary_2_file"
+
+project=$(cat "$project_dir/assignment_id") || \
+  panic "cannot get assignment ID"
+
+if [ "${#packages[@]}" -eq 0 ]; then
+	packages=($("$ari_info" -a "$project" packages)) || \
+	  panic "cannot get package list"
+fi
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+#mkdir -p "$tmp_dir" || panic "cannot make temporary directory $tmp_dir"
+summary_1_file="$tmp_dir/summary_1"
+summary_2_file="$tmp_dir/summary_2"
+
+cat > "$summary_1_file" <<- EOF
+RESULTS
+=======
+
+EOF
+print_status >> "$summary_1_file"
+
+touch "$summary_2_file"
+
+if [ "$verbose" -ge 1 ]; then
+	print_status
+fi
+
+for package in "${packages[@]}"; do
+
+	package_dir="$project_dir/package-$package"
+	source_dir="$package_dir/source"
+	derived_dir="$package_dir/derived"
+	install_dir="$package_dir/install"
+	configure_dir="$package_dir/configure"
+	configure_status_file="$configure_dir/status"
+	configure_log_file="$configure_dir/log"
+	configure_time_file="$configure_dir/time"
+
+	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+	  panic "cannot get optional"
+
+	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
+		if [ "$debug_level" -ge 1 ]; then
+			echo "skipping optional package"
+		fi
+		continue
+	fi
+
+	if [ ! -d "$package_dir" ]; then
+		if [ "$skip_unavailable" -ne 0 ]; then
+			continue
+		fi
+		panic "missing package $package"
+	fi
+
+	build_type=$("$ari_info" \
+	  -a "$project" package-"$package"/build_tool) || \
+	  panic "cannot get build type"
+	case "$build_type" in
+	auto)
+		if [ -f "$source_dir/CMakeLists.txt" ]; then
+			build_tool=cmake
+		else
+			build_tool=make
+		fi
+		;;
+	*)
+		build_tool="$build_type"
+		;;
+	esac
+
+	targets=($("$ari_info" -a "$project" package-"$package"/builds)) || \
+	  panic "cannot get build targets"
+
+	if [ "$force_clean" -ne 0 ]; then
+		# Remove configure/build status and log files.
+		files=()
+		files+=("$configure_status_file")
+		files+=("$configure_log_file")
+		files+=("$configure_time_file")
+		for target in "${targets[@]}"; do
+			build_dir="$package_dir/build-$target"
+			build_log_file="$build_dir/log"
+			build_status_file="$build_dir/status"
+			build_time_file="$build_dir/time"
+			files+=("$build_status_file")
+			files+=("$build_log_file")
+			files+=("$build_time_file")
+		done
+		for file in "${files[@]}"; do
+			if [ -f "$file" ]; then
+				rm -f "$file" || \
+				  panic "cannot remove file $file"
+			fi
+		done
+	fi
+
+	needs_configure=0
+	if [ ! -f "$configure_status_file" -o ! -f "$configure_log_file" ]; then
+		needs_configure=1
+	fi
+	if [ -f "$configure_status_file" ]; then
+		configure_status=$(cat "$configure_status_file") || \
+		  panic "cannot get configure status"
+		if [ "$configure_status" -ne 0 ]; then
+			needs_configure=1
+		fi
+	fi
+
+	if [ "$needs_configure" -ne 0 ]; then
+
+		"$ari_tee" "${tee_opts[@]}" <<- EOF
+		########################################
+		Configuring
+		Package: $package
+		########################################
+		EOF
+
+		if [ ! -d "$configure_dir" ]; then
+			mkdir -p "$configure_dir" || panic
+		fi
+
+		# Remove all files and symbolic links but keep the directories.
+		find "$derived_dir" \( -type f -or -type l \) \
+		  -exec rm -f {} \; || panic "find failed"
+
+		case "$build_tool" in
+
+		cmake)
+			out_of_source_build=$("$ari_info" \
+			  -a "$project" package-"$package"/out_of_source_build) || \
+			  panic "cannot get out_of_source_build property"
+			configure_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			if [ "$out_of_source_build" -ne 0 ]; then
+				(cmake \
+				  -H"$source_dir" \
+				  -B"$derived_dir" \
+				  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+				  ) |& "$ari_tee" "${tee_opts[@]}" \
+				 "$configure_log_file"
+				configure_status=${PIPESTATUS[0]}
+			else
+				(chdir "$derived_dir" && "$ari_lndir" ../source) || \
+				  panic "cannot make link tree"
+				configure_status=0
+				if [ "$configure_status" -eq 0 ]; then
+					(cmake \
+					  -H"$derived_dir" \
+					  -B"$derived_dir" \
+					  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+					  ) |& "$ari_tee" "${tee_opts[@]}" \
+					 "$configure_log_file"
+					configure_status=${PIPESTATUS[0]}
+				fi
+			fi
+			configure_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			configure_time=$("$ari_calc" -f "%.1f" \
+			  "$configure_end_time - $configure_start_time") || \
+			  panic "cannot calculate configure time"
+			;;
+
+		make)
+			configure_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			(chdir "$derived_dir" && "$ari_lndir" ../source) || \
+			  panic "cannot make link tree"
+			configure_status=0
+			configure_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			touch "$configure_log_file"
+			configure_time=$("$ari_calc" -f "%.1f" \
+			  "$configure_end_time - $configure_start_time") || \
+			  panic "cannot calculate configure time"
+			;;
+
+		user)
+			saved_ifs="$IFS"
+			IFS=$'\ca'
+			configure_program=($( \
+			  ARI_BIN_DIR="$cmd_dir" \
+			  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+			  ARI_SOURCE_DIR="$source_dir" \
+			  ARI_DERIVED_DIR="$derived_dir" \
+			  ARI_INSTALL_DIR="$install_dir" \
+			  "$ari_info" \
+			  -a "$project" -e -d "$IFS" \
+			  package-"$package"/configure))
+			status=$?
+			IFS="$saved_ifs"
+			if [ "$status" -ne 0 ]; then
+				panic "cannot get test program"
+			fi
+			configure_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			ARI_BIN_DIR="$cmd_dir" \
+			  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+			  ARI_SOURCE_DIR="$source_dir" \
+			  ARI_DERIVED_DIR="$derived_dir" \
+			  ARI_INSTALL_DIR="$install_dir" \
+			  "${configure_program[@]}" < /dev/null |& \
+			  "$ari_tee" "${tee_opts[@]}" "$configure_log_file"
+			configure_status=${PIPESTATUS[0]}
+			configure_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			configure_time=$("$ari_calc" -f "%.1f" \
+			  "$configure_end_time - $configure_start_time") || \
+			  panic "cannot calculate configure time"
+			;;
+
+		*)
+			panic "invalid build tool"
+			;;
+
+		esac
+
+		configure_log_length=$(count_lines "$configure_log_file") || \
+		  panic "cannot get configure log length"
+		echo "$configure_time" > "$configure_time_file" || \
+		  panic "cannot make configure time file"
+		echo "$configure_status" > "$configure_status_file" || \
+		  panic "cannot make configure status file"
+		if [ "$verbose" -ge 1 ]; then
+			print_status \
+			  "$reproducible" "$package" "configure" "---" \
+			  "$configure_status" "$configure_time" "" ""
+		fi
+		print_status \
+		  "$reproducible" "$package" "configure" "---" "$configure_status" \
+		  "$configure_time" "" "$configure_log_length" >> "$summary_1_file"
+		if [ "$configure_status" -ne 0 ]; then
+			echo "############################################################" >> "$summary_2_file"
+			echo "LOG FILE for $package configure" \
+			  >> "$summary_2_file"
+			cat "$configure_log_file" >> "$summary_2_file"
+			echo "############################################################" >> "$summary_2_file"
+		fi
+
+	fi
+
+	for target in "${targets[@]}"; do
+
+		"$ari_tee" "${tee_opts[@]}" <<- EOF
+		########################################
+		Building
+		Package: $package
+		Target: $target
+		########################################
+		EOF
+
+		build_dir="$package_dir/build-$target"
+		build_log_file="$build_dir/log"
+		build_status_file="$build_dir/status"
+		build_time_file="$build_dir/time"
+
+		if [ ! -d "$build_dir" ]; then
+			mkdir -p "$build_dir" || panic
+		fi
+
+		dependencies=($("$ari_info" \
+		  -a "$project" package-"$package"/build-$target/depends_on)) || \
+		  panic "cannot get dependencies"
+		missing_dependencies=0
+		for dependency in "${dependencies[@]}"; do
+			status_file="$package_dir/$dependency/status"
+			if [ -f "$status_file" ]; then
+				buffer=$(cat "$status_file") || \
+				  panic "cannot get contents of status file"
+				if [ "$buffer" -ne 0 ]; then
+					missing_dependencies=1
+				fi
+			else
+				missing_dependencies=1
+			fi
+		done
+		if [ "$missing_dependencies" -ne 0 ]; then
+			if [ "$verbose" -ge 1 ]; then
+					print_status "$reproducible" "$package" "build" \
+					  "$target" "" "" "" ""
+			fi
+			continue
+		fi
+
+
+		case "$build_tool" in
+
+		cmake)
+			cmake_opts=()
+			if [ "$target" != all ]; then
+				cmake_opts+=(--target "$target")
+			fi
+			build_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			cmake \
+			  --build "$derived_dir" \
+			  "${cmake_opts[@]}" |& \
+			  "$ari_tee" "${tee_opts[@]}" \
+			  "$build_log_file"
+			build_status=${PIPESTATUS[0]}
+			build_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			;;
+
+		make)
+			build_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			(chdir "$derived_dir" && make "$target") |& \
+			  "$ari_tee" "${tee_opts[@]}" \
+			  "$build_log_file"
+			build_status=${PIPESTATUS[0]}
+			build_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			;;
+
+		user)
+			saved_ifs="$IFS"
+			IFS=$'\ca'
+			build_program=($( \
+			  ARI_BIN_DIR="$cmd_dir" \
+			  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+			  ARI_SOURCE_DIR="$source_dir" \
+			  ARI_DERIVED_DIR="$derived_dir" \
+			  ARI_INSTALL_DIR="$install_dir" \
+			  "$ari_info" \
+			  -a "$project" -e -d "$IFS" \
+			  package-"$package"/build))
+			status=$?
+			IFS="$saved_ifs"
+			if [ "$status" -ne 0 ]; then
+				panic "cannot get test program"
+			fi
+			build_start_time=$(time_since_epoch) || \
+			  panic "cannot get start time"
+			ARI_BIN_DIR="$cmd_dir" \
+			  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+			  ARI_SOURCE_DIR="$source_dir" \
+			  ARI_DERIVED_DIR="$derived_dir" \
+			  ARI_INSTALL_DIR="$install_dir" \
+			  ARI_BUILD_TARGET="$target" \
+			  "${build_program[@]}" < /dev/null |& \
+			  "$ari_tee" "${tee_opts[@]}" "$build_log_file"
+			build_status=${PIPESTATUS[0]}
+			build_end_time=$(time_since_epoch) || \
+			  panic "cannot get end time"
+			;;
+
+		*)
+			panic "invalid build tool"
+			;;
+
+		esac
+
+		build_time=$("$ari_calc" -f "%.1f" \
+		  "$build_end_time - $build_start_time") || \
+		  panic "cannot calculate build time"
+		echo "$build_status" > "$build_status_file" || \
+		  panic "cannot make build status file"
+		echo "$build_time" > "$build_time_file" || \
+		  panic "cannot make build time file"
+
+		build_log_length=$(count_lines "$build_log_file") || \
+		  panic "cannot get build log length"
+
+		executable_files=($("$ari_info" -a "$project" \
+		  package-"$package"/build-"$target"/executables)) || \
+		  panic "cannot get executables"
+		for file in "${executable_files[@]}"; do
+			target_file="$derived_dir/$file"
+			if [ ! \( -f "$target_file" -a -x "$target_file" \) ]; then
+				if [ "$build_status" -eq 0 ]; then
+					build_status=100
+				fi
+				echo "ERROR: build failed to generate executable $file" >> \
+				  "$summary_2_file"
+			fi
+		done
+
+		if [ "$verbose" -ge 1 ]; then
+			print_status "$reproducible" "$package" "build" "$target" \
+			  "$build_status" "$build_time" "" "$build_log_length"
+		fi
+		print_status "$reproducible" "$package" "build" "$target" \
+		  "$build_status" "$build_time" "" "$build_log_length" \
+		  >> "$summary_1_file"
+		if [ "$build_status" -ne 0 ]; then
+			echo "LOG FILE for $package build $target" \
+			  >> "$summary_2_file"
+			cat "$build_log_file" >> "$summary_2_file"
+		fi
+
+	done
+
+done
+
+if [ "$verbose" -ge 2 ]; then
+	cat "$summary_1_file" "$summary_2_file"
+fi
+
+if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
+	rm -rf "$tmp_dir" || echo "cannot remove directory $tmp_dir"
+	true
+fi
