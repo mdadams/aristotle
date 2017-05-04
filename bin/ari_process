@@ -39,8 +39,10 @@ usage()
 	options:
 	-D debug_level
 	    Set debug level to debug_level.
-	-P
-	    Only perform precheck (i.e., skip optional packages).
+	-O
+	    Skip optional items.
+	-R
+	    Enable reproducible mode (for testing).
 	EOF
 	exit 2
 }
@@ -53,15 +55,15 @@ ari_report="$cmd_dir/ari_report"
 ari_info="$cmd_dir/ari_info"
 
 reproducible=0
-precheck=0
+skip_optional=0
 debug_level=${ARI_DEBUG_LEVEL:-0}
 
-while getopts RPD:o: option; do
+while getopts ROD:o: option; do
 	case "$option" in
 	R)
 		reproducible=1;;
-	P)
-		precheck=1;;
+	O)
+		skip_optional=1;;
 	D)
 		debug_level="$OPTARG";;
 	*)
@@ -85,13 +87,17 @@ for dir in "${dirs[@]}"; do
 		EOF
 	fi
 
-	opts=()
-	opts+=(-D "$debug_level")
-	opts+=(-d "$project_dir")
+	############################################################
+	# Validate the assignment submission.
+	############################################################
+
+	validate_args=()
+	validate_args+=(-D "$debug_level")
+	validate_args+=(-d "$project_dir")
 	if [ "$debug_level" -ge 1 ]; then
-		eecho "Running ari_validate ${opts[@]}"
+		eecho "Running ari_validate ${validate_args[@]}"
 	fi
-	"$ari_validate" "${opts[@]}"
+	"$ari_validate" "${validate_args[@]}"
 	validate_status=$?
 
 	if [ "$validate_status" -ne 0 ]; then
@@ -100,6 +106,10 @@ for dir in "${dirs[@]}"; do
 		skipped_dirs+=("$dir")
 		continue
 	fi
+
+	############################################################
+	# Generate the packages for the assignment.
+	############################################################
 
 	project=$(cat "$project_dir/assignment_id") || \
 	  panic "cannot get assignment ID"
@@ -112,88 +122,88 @@ for dir in "${dirs[@]}"; do
 	mangled_student_name=$(echo "$student_name" | sed 's/[^a-zA-Z]/_/g') || \
 	  panic "cannot compute mangled student name"
 
-	packages=($("$ari_info" -a "$project" packages)) || \
-	  panic "cannot get package"
-	package_opts=()
-	for package in "${packages[@]}"; do
-		optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
-		  panic "cannot get optional"
-		if [ "$precheck" -ne 0 -a "$optional" -ne 0 ]; then
-			continue
-		fi
-		package_opts+=(-p "$package")
-	done
-
-	opts=()
-	opts+=(-D "$debug_level")
-	opts+=(-d "$project_dir")
-	opts+=("${package_opts[@]}")
-	#if [ "$precheck" -ne 0 ]; then
-	#	opts+=(-O)
-	#fi
-	if [ "$debug_level" -ge 1 ]; then
-		eecho "Running ari_generate ${opts[@]}"
+	generate_args=()
+	generate_args+=(-D "$debug_level")
+	generate_args+=(-d "$project_dir")
+	if [ "$skip_optional" -ne 0 ]; then
+		generate_args+=(-O)
 	fi
-	"$ari_generate" "${opts[@]}" || \
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running ari_generate ${generate_args[@]}"
+	fi
+	"$ari_generate" "${generate_args[@]}" || \
 	  panic "generation failed"
 
-	opts=()
-	opts+=(-v)
-	opts+=(-D "$debug_level")
-	opts+=(-d "$project_dir")
-	opts+=(-c)
+	############################################################
+	# Build the packages for the assignment.
+	############################################################
+
+	build_args=()
+	build_args+=(-v)
+	build_args+=(-D "$debug_level")
+	build_args+=(-d "$project_dir")
+	build_args+=(-c)
 	if [ "$reproducible" -ne 0 ]; then
-		opts+=(-R)
+		build_args+=(-R)
 	fi
-	#if [ "$precheck" -ne 0 ]; then
-	#	opts+=(-O)
-	#fi
-	#opts+=(-u)
-	opts+=("${package_opts[@]}")
+	if [ "$skip_optional" -ne 0 ]; then
+		build_args+=(-O)
+	fi
+	###build_args+=(-u)
 	if [ "$debug_level" -ge 1 ]; then
-		eecho "Running ari_build ${opts[@]}"
+		eecho "Running ari_build ${build_args[@]}"
 	fi
-	"$ari_build" "${opts[@]}" || \
+	"$ari_build" "${build_args[@]}" || \
 	  panic "build failed"
 
-	if [ "$precheck" -eq 0 ]; then
-		opts=()
-		opts+=(-v)
-		opts+=(-D "$debug_level")
-		opts+=(-d "$project_dir")
-		#opts+=(-u)
-		if [ "$reproducible" -ne 0 ]; then
-			opts+=(-R)
-		fi
-		opts+=("${package_opts[@]}")
-		if [ "$debug_level" -ge 1 ]; then
-			eecho "Testing"
-		fi
-		"$ari_test" "${opts[@]}" || \
-		  panic "test failed"
+	############################################################
+	# Test the packages for the assignment.
+	############################################################
 
-		opts=()
-		opts+=(-D "$debug_level")
-		opts+=(-d "$project_dir")
-		opts+=(-o "$project_dir/report.pdf")
-		#opts+=(-u)
-		if [ "$reproducible" -ne 0 ]; then
-			opts+=(-R)
-		fi
-		opts+=("${package_opts[@]}")
-		if [ "$debug_level" -ge 1 ]; then
-			eecho "Reporting"
-		fi
-		"$ari_report" "${opts[@]}" || \
-		  panic "report failed"
-
-		alt_report_file="$project_dir/report-$project-$section-$mangled_student_name-$student_id.pdf"
-		if [ -L "$alt_report_file" -o -e "$alt_report_file" ]; then
-			rm -f "$alt_report_file" || \
-			  panic "cannot remove file $alt_report_file"
-		fi
-		ln -s report.pdf "$alt_report_file" || panic "cannot make link"
+	test_args=()
+	if [ "$skip_optional" -ne 0 ]; then
+		test_args+=(-O)
 	fi
+	test_args+=(-v)
+	test_args+=(-D "$debug_level")
+	test_args+=(-d "$project_dir")
+	#test_args+=(-u)
+	if [ "$reproducible" -ne 0 ]; then
+		test_args+=(-R)
+	fi
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Testing"
+	fi
+	"$ari_test" "${test_args[@]}" || \
+	  panic "test failed"
+
+	############################################################
+	# Generate the report for the assignment.
+	############################################################
+
+	report_args=()
+	if [ "$skip_optional" -ne 0 ]; then
+		report_args+=(-O)
+	fi
+	report_args+=(-D "$debug_level")
+	report_args+=(-d "$project_dir")
+	report_args+=(-o "$project_dir/report.pdf")
+	#report_args+=(-u)
+	if [ "$reproducible" -ne 0 ]; then
+		report_args+=(-R)
+	fi
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Reporting"
+	fi
+	"$ari_report" "${report_args[@]}" || \
+	  panic "report failed"
+
+	alt_report_file="$project_dir/report-$project-$section-$mangled_student_name-$student_id.pdf"
+	if [ -L "$alt_report_file" -o -e "$alt_report_file" ]; then
+		rm -f "$alt_report_file" || \
+		  panic "cannot remove file $alt_report_file"
+	fi
+	ln -s report.pdf "$alt_report_file" || panic "cannot make link"
 
 done
 
