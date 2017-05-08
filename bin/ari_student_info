@@ -26,77 +26,21 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
-db_get_info="$cmd_dir/db_get_info"
+ari_ifinfo="$cmd_dir/ari_ifinfo"
 
-usage()
-{
-	cat <<- EOF
-	usage: $0 [options]
-	-D debug_level
-	    Set the debug level to debug_level.
-	-d project_dir
-	    Set the project directory to project_dir.
-	-f input_file
-	    Set the input file to input_file.
-	-n query_key
-	    Set the query key to query_key,
-	-v
-	    Increase the verbosity level.
-	EOF
-	exit 2
-}
-
-in_file=
-query_key=
-debug_level=${ARI_DEBUG_LEVEL:-0}
-
-while getopts D:d:f:n: option; do
-	case "$option" in
-	D)
-		debug_level="$OPTARG";;
-	d)
-		project_dir="$OPTARG";;
-	f)
-		in_file="$OPTARG";;
-	n)
-		query_key="$OPTARG";;
-	v)
-		verbose=$((verbose + 1));;
-	*)
-		usage "invalid option $option";;
-	esac
-done
-shift $((OPTIND - 1))
-
-if [ -z "$in_file" ]; then
-	panic "no input file specified"
-fi
-if [ -z "$query_key" ]; then
-	panic "no key specified"
+if [ -z "$ARI_DIST_DIR" ]; then
+	panic "ARI_DIST_DIR environment variable not set"
 fi
 
-num_recs=$("$db_get_info" -i "$in_file" -m get_num_records) || panic
+if [ $# -ne 1 ]; then
+	panic "invalid number of arguments"
+fi
 
-rec_no=0
-while [ "$rec_no" -lt "$num_recs" ]; do
-	key=$("$db_get_info" \
-	  -i "$in_file" -m get_field -r "$rec_no" -f 0) || \
-	  panic "cannot get key field"
-	if [ "$key" = "$query_key" ]; then
-		num_values=$("$db_get_info" \
-		  -i "$in_file" -m get_num_fields -r "$rec_no") || \
-		  panic "cannot get number of values"
-		if [ "$num_values" -gt 2 ]; then
-			panic "too many values specified for key $key"
-		fi
-		value=$("$db_get_info" \
-		  -i "$in_file" -m get_field -r "$rec_no" -f 1) || \
-		  panic "cannot get value field"
-		echo "$value"
-		status=$?
-		exit "$status"
-	fi
-	rec_no=$((rec_no + 1))
-done
+key="$1"
 
-panic "unable to find key $query_key"
+dist_dir="$ARI_DIST_DIR"
+identification_file="$dist_dir/IDENTIFICATION.txt"
+if [ ! -f "$identification_file" ]; then
+	panic "no IDENTIFICATION.txt file"
+fi
+"$ari_ifinfo" -f "$identification_file" -n "$key"

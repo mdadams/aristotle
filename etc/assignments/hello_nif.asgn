@@ -1,11 +1,10 @@
 name "Hello World"
-required_files IDENTIFICATION.txt CMakeLists.txt hello.cpp
+required_files CMakeLists.txt hello.cpp
 report_files CMakeLists.txt hello.cpp
 
 #validate ${ARI_ASSIGNMENTS_DIR}/../bin/hello-validate ${ARI_DIST_DIR}
 
-# The following line is not strictly needed, since it is the effective default.
-student_info_program ${ARI_BIN_DIR}/ari_student_info
+student_info_program ${ARI_ASSIGNMENTS_DIR}/../public/bin/student_info
 
 packages original
 package-original/name "The original code as submitted by the student."

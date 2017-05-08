@@ -1,0 +1,32 @@
+#! /usr/bin/env bash
+
+panic()
+{
+	echo "ERROR: $@"
+	exit 1
+}
+
+get_field()
+{
+	echo "$2" | tr '-' ' ' | awk -v i="$1" '{print $i}' -
+}
+
+submission_source="$ARI_SUBMISSION_SOURCE"
+
+base=$(basename "$submission_source") || panic "cannot get base name"
+
+last_name=$(get_field 2 "$base") || panic "cannot get last name"
+first_name=$(get_field 3 "$base") || panic "cannot get first name"
+
+if [ $# -ne 1 ]; then
+	panic "invalid number of arguments"
+fi
+
+key="$1"
+
+case "$key" in
+name)
+	echo "$first_name $last_name";;
+*)
+	echo "---";;
+esac

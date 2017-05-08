@@ -66,8 +66,6 @@ usage()
 ari_info="$cmd_dir/ari_info"
 ari_locate="$cmd_dir/ari_locate"
 ari_student_info="$cmd_dir/ari_student_info"
-ari_validate_section="$cmd_dir/ari_validate_section"
-ari_validate_student_id="$cmd_dir/ari_validate_student_id"
 ari_validate_line="$cmd_dir/ari_validate_line"
 
 project_dir=$("$ari_locate" -q) || project_dir=
@@ -199,14 +197,40 @@ student_name_file="$project_dir/student_name"
 student_id_file="$project_dir/student_id"
 student_email_file="$project_dir/student_email"
 section_file="$project_dir/section"
+submission_source_file="$project_dir/submission_source"
 
-student_info_program=
-identification_file="$dist_dir/IDENTIFICATION.txt"
+submission_source=$(cat "$submission_source_file") || \
+  panic "cannot get submission source"
+
+saved_ifs="$IFS"
+IFS=$'\ca'
+student_info_program=($(\
+  ARI_BIN_DIR="$cmd_dir" \
+  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$ari_info" -a "$project" -e -d "$IFS" student_info_program))
+status=$?
+IFS="$saved_ifs"
+if [ "$status" -ne 0 ]; then
+	panic "cannot get property student_info_program"
+fi
 if [ -z "$student_info_program" ]; then
 	student_info_program="$ari_student_info"
 fi
 
-student_name=$("$student_info_program" -f "$identification_file" -n name)
+student_id_regex=$("$ari_info" -a "$project" student_id_regex) || panic
+section_regex=$("$ari_info" -a "$project" section_regex) || panic
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "student ID regex $student_id_regex"
+	eecho "section regex $section_regex"
+fi
+
+student_name=$( \
+  ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$student_info_program" name \
+  )
 student_name_status=$?
 if [ "$student_name_status" -eq 0 ]; then
 	"$ari_validate_line" -e '[[:print:]]+' "$student_name"
@@ -219,26 +243,36 @@ else
 	num_errors=$((num_errors + 1))
 fi
 
-student_id=$("$student_info_program" -f "$identification_file" -n student_id)
+student_id=$( \
+  ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$student_info_program" student_id \
+  )
 student_id_status=$?
 if [ "$student_id_status" -eq 0 ]; then
 	"$ari_validate_line" -e '[[:print:]]+' "$student_id"
 	student_id_status=$?
 fi
-if [ "$student_id_status" -eq 0 ]; then
-	"$ari_validate_student_id" "$student_id"
+if [ "$student_id_status" -eq 0 -a -n "$student_id_regex" ]; then
+	"$ari_validate_line" -D "$debug_level" -e "$student_id_regex" \
+	  "$student_id"
 	student_id_status=$?
 	if [ "$student_id_status" -ne 0 ]; then
 		eecho "ERROR: invalid student ID"
 		num_errors=$((num_errors + 1))
 	fi
-	echo "$student_id" > "$student_id_file"
-else
+fi
+if [ "$student_id_status" -ne 0 ]; then
 	eecho "ERROR: cannot determine student ID"
 	num_errors=$((num_errors + 1))
 fi
+echo "$student_id" > "$student_id_file"
 
-student_email=$("$student_info_program" -f "$identification_file" -n email)
+student_email=$( \
+  ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$student_info_program" email \
+  )
 student_email_status=$?
 if [ "$student_email_status" -eq 0 ]; then
 	"$ari_validate_line" -e '[[:print:]]+' "$student_email"
@@ -251,24 +285,29 @@ else
 	num_errors=$((num_errors + 1))
 fi
 
-section=$("$student_info_program" -f "$identification_file" -n section)
+section=$( \
+  ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$student_info_program" section \
+  )
 section_status=$?
 if [ "$section_status" -eq 0 ]; then
 	"$ari_validate_line" -e '[[:print:]]+' "$section"
 	section_status=$?
 fi
-if [ "$section_status" -eq 0 ]; then
-	"$ari_validate_section" "$section"
+if [ "$section_status" -eq 0 -a -n "$section_regex" ]; then
+	"$ari_validate_line" -D "$debug_level" -e "$section_regex" "$section"
 	section_status=$?
 	if [ "$section_status" -ne 0 ]; then
 		eecho "ERROR: invalid section"
 		num_errors=$((num_errors + 1))
 	fi
-	echo "$section" > "$section_file"
-else
+fi
+if [ "$section_status" -ne 0 ]; then
 	eecho "ERROR: cannot determine section"
 	num_errors=$((num_errors + 1))
 fi
+echo "$section" > "$section_file"
 
 saved_ifs="$IFS"
 IFS=$'\ca'

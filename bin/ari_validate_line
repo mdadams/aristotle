@@ -29,12 +29,14 @@ source "$cmd_dir/utilities"
 debug_level=0
 pattern=
 
-while getopts D:e: option; do
+while getopts D:e:- option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
 	e)
 		pattern="$OPTARG";;
+	-)
+		break;;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -46,6 +48,15 @@ if [ "$#" -ne 1 ]; then
 fi
 
 data="$1"
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "pattern $pattern"
+	eecho "data $data"
+fi
 
 num_lines=$(echo "$data" | wc -l | awk '{print $1;}') || \
   panic "cannot get number of lines"

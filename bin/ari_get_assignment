@@ -24,18 +24,36 @@
 # __END_OF_LICENSE__
 
 cmd_dir=$(dirname "$0") || exit 1
-source "$cmd_dir/utilities"
+source "$cmd_dir/utilities" || exit 1
 
-ari_validate_line="$cmd_dir/ari_validate_line"
+ari_ifinfo="$cmd_dir/ari_ifinfo"
 
-if [ $# -ne 1 ]; then
-	panic "no data specified"
+debug_level=${ARI_DEBUG_LEVEL:-0}
+
+while getopts D: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
 fi
 
-student_id="$1"
-
-"$ari_validate_line" -q -e '^[Vv][0-9]+$' "$student_id" 2> /dev/null
-status=$?
-if [ "$status" -ne 0 ]; then
-	panic "student ID is not of the form of \"V\" followed by digits"
+if [ -z "$ARI_DIST_DIR" ]; then
+	panic "ARI_DIST_DIR not set"
 fi
+
+dist_dir="$ARI_DIST_DIR"
+identification_file="$dist_dir/IDENTIFICATION.txt"
+if [ ! -f "$identification_file" ]; then
+	eecho "ERROR: no IDENTIFICATION.txt file"
+	panic "cannot determine assignment"
+fi
+project=$("$ari_ifinfo" -f "$identification_file" -n assignment) || \
+  panic "cannot get assignment property"
+echo "$project"

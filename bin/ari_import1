@@ -53,7 +53,8 @@ usage()
 	exit 2
 }
 
-ari_student_info="$cmd_dir/ari_student_info"
+ari_get_assignment="$cmd_dir/ari_get_assignment"
+ari_ifinfo="$cmd_dir/ari_ifinfo"
 ari_validate_line="$cmd_dir/ari_validate_line"
 
 project_dir=
@@ -120,10 +121,13 @@ if [ -d "$project_dir" ]; then
 fi
 
 dist_dir="$project_dir/distribution"
+signature_file="$project_dir/.aristotle"
+submission_source_file="$project_dir/submission_source"
 
 mkdir -p "$project_dir" || panic "cannot make directory $project_dir"
 
-echo "Aristotle" > "$project_dir"/.aristotle
+echo "Aristotle" > "$signature_file"
+echo "$in_source" > "$submission_source_file"
 
 for dir in distribution; do
 	target_dir="$project_dir/$dir"
@@ -152,12 +156,6 @@ git)
 	if [ -z "$in_subtype" ]; then
 		in_subtype=master
 	fi
-#	(chdir "$dist_dir" && \
-#	  git clone -q -b "$in_subtype" "$in_source" . ) || \
-#	  panic "cannot clone repository"
-	# Clone the repository.
-	#(chdir "$dist_dir" && git clone -q "$in_source" . ) || \
-	#  panic "cannot clone repository $in_source"
 	git clone -q "$in_source" "$dist_dir" || \
 	  panic "cannot clone repository $in_source"
 
@@ -221,20 +219,41 @@ directory|dir)
 
 esac
 
+get_assignment_program="${ARI_GET_ASSIGNMENT:-$ari_get_assignment}"
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "get_assignment_program $get_assignment_program"
+fi
+
 if [ -z "$default_project" ]; then
-	identification_file="$dist_dir/IDENTIFICATION.txt"
-	if [ ! -f "$identification_file" ]; then
-		eecho "ERROR: no IDENTIFICATION.txt file"
-		panic "cannot determine assignment"
-	fi
-	project=$("$ari_student_info" \
-	  -f "$identification_file" -n assignment) || \
-	  panic "cannot get assignment property"
-	"$ari_validate_line" -e '^[A-Za-z0-9_]+$' "$project" || \
-	  panic "assignment ID is invalid ($project)"
+	project=$( \
+	ARI_SUBMISSION_SOURCE="$in_source" \
+	  ARI_DIST_DIR="$dist_dir" \
+	  "$get_assignment_program" \
+	  )
 else
 	project="$default_project"
 fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "assignment ID $project"
+fi
+"$ari_validate_line" -e '^[A-Za-z0-9_]+$' "$project" || \
+  panic "assignment ID is invalid ($project)"
+
+#if [ -z "$default_project" ]; then
+#	identification_file="$dist_dir/IDENTIFICATION.txt"
+#	if [ ! -f "$identification_file" ]; then
+#		eecho "ERROR: no IDENTIFICATION.txt file"
+#		panic "cannot determine assignment"
+#	fi
+#	project=$("$ari_ifinfo" \
+#	  -f "$identification_file" -n assignment) || \
+#	  panic "cannot get assignment property"
+#	"$ari_validate_line" -e '^[A-Za-z0-9_]+$' "$project" || \
+#	  panic "assignment ID is invalid ($project)"
+#else
+#	project="$default_project"
+#fi
 
 echo "$project" > "$project_dir/assignment_id" || \
   panic "cannot make assignment ID file"

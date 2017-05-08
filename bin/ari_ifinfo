@@ -1,0 +1,102 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+db_get_info="$cmd_dir/db_get_info"
+
+usage()
+{
+	cat <<- EOF
+	usage: $0 [options]
+	-D debug_level
+	    Set the debug level to debug_level.
+	-d project_dir
+	    Set the project directory to project_dir.
+	-f input_file
+	    Set the input file to input_file.
+	-n query_key
+	    Set the query key to query_key,
+	-v
+	    Increase the verbosity level.
+	EOF
+	exit 2
+}
+
+in_file=
+query_key=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+
+while getopts D:d:f:n: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	f)
+		in_file="$OPTARG";;
+	n)
+		query_key="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$in_file" ]; then
+	panic "no input file specified"
+fi
+if [ -z "$query_key" ]; then
+	panic "no key specified"
+fi
+
+num_recs=$("$db_get_info" -i "$in_file" -m get_num_records) || panic
+
+rec_no=0
+while [ "$rec_no" -lt "$num_recs" ]; do
+	key=$("$db_get_info" \
+	  -i "$in_file" -m get_field -r "$rec_no" -f 0) || \
+	  panic "cannot get key field"
+	if [ "$key" = "$query_key" ]; then
+		num_values=$("$db_get_info" \
+		  -i "$in_file" -m get_num_fields -r "$rec_no") || \
+		  panic "cannot get number of values"
+		if [ "$num_values" -gt 2 ]; then
+			panic "too many values specified for key $key"
+		fi
+		value=$("$db_get_info" \
+		  -i "$in_file" -m get_field -r "$rec_no" -f 1) || \
+		  panic "cannot get value field"
+		echo "$value"
+		status=$?
+		exit "$status"
+	fi
+	rec_no=$((rec_no + 1))
+done
+
+panic "unable to find key $query_key"
