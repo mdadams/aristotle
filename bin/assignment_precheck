@@ -32,11 +32,13 @@ usage()
 {
 	echo "$@"
 	cat <<- EOF
-	Usage: $0 [options] repository_url
+	Usage: $0 [options] assignment_submission_input_source
 
 	Description:
-	Perform a basic sanity check of the assignment submission stored
-	in the Git repository with the specified URL.
+	Perform a basic sanity check of the assignment submission associated
+	with the specified assignment submission input source (e.g., the
+	URL of a Git repository, the name of a Zip or gzipped-Tar archive file,
+	or the name of a directory).
 
 	Options:
 	-D debug_level
@@ -120,7 +122,6 @@ options+=(-d "$tmp_dir")
 if [ -n "$in_type" ]; then
 	options+=(-t "$in_type")
 fi
-options+=(-F)
 if [ -n "$branch" ]; then
 	options+=(-s "$branch")
 fi

@@ -123,7 +123,7 @@ for name in "${names[@]}"; do
 	esac
 
 	command=("$ari_precheck" -D "$debug_level"
-	  -v -F -p "$work_dir/precheck/" -t directory \
+	  -v -p "$work_dir/precheck/" -t directory \
 	  "$example_dir/"$name-*)
 	cat <<- EOF
 	################################################################################

@@ -43,6 +43,8 @@ usage()
 	    Skip optional items.
 	-R
 	    Enable reproducible mode (for testing).
+	-v
+	    Increase verbosity level of output.
 	EOF
 	exit 2
 }
@@ -57,8 +59,9 @@ ari_info="$cmd_dir/ari_info"
 reproducible=0
 skip_optional=0
 debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
 
-while getopts ROD:o: option; do
+while getopts ROD:o:v option; do
 	case "$option" in
 	R)
 		reproducible=1;;
@@ -66,13 +69,16 @@ while getopts ROD:o: option; do
 		skip_optional=1;;
 	D)
 		debug_level="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
 	*)
 		usage "invalid option $option";;
 	esac
 done
 shift $((OPTIND - 1))
 
-skipped_dirs=()
+validate_failures=()
+all_failures=()
 dirs=("$@")
 
 for dir in "${dirs[@]}"; do
@@ -94,6 +100,9 @@ for dir in "${dirs[@]}"; do
 	validate_args=()
 	validate_args+=(-D "$debug_level")
 	validate_args+=(-d "$project_dir")
+	if [ "$verbose" -ge 1 ]; then
+		validate_opts+=(-v)
+	fi
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running ari_validate ${validate_args[@]}"
 	fi
@@ -101,9 +110,11 @@ for dir in "${dirs[@]}"; do
 	validate_status=$?
 
 	if [ "$validate_status" -ne 0 ]; then
-		warn "validation failed for $dir"
-		warn "skipping $dir"
-		skipped_dirs+=("$dir")
+		eecho "THIS ASSIGNMENT WILL RECEIVE A MARK OF ZERO IF SUBMITTED!"
+		warn "validation failed for input $dir"
+		warn "skipping remainder of processing for input $dir"
+		validate_failures+=("$dir")
+		all_failures+=("$dir")
 		continue
 	fi
 
@@ -131,15 +142,21 @@ for dir in "${dirs[@]}"; do
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running ari_generate ${generate_args[@]}"
 	fi
-	"$ari_generate" "${generate_args[@]}" || \
-	  panic "generation failed"
+	"$ari_generate" "${generate_args[@]}"
+	if [ $? -ne 0 ]; then
+		echo "generation failed"
+		all_failures+=("$dir")
+		continue
+	fi
 
 	############################################################
 	# Build the packages for the assignment.
 	############################################################
 
 	build_args=()
-	build_args+=(-v)
+	if [ "$verbose" -ge 1 ]; then
+		build_args+=(-v)
+	fi
 	build_args+=(-D "$debug_level")
 	build_args+=(-d "$project_dir")
 	build_args+=(-c)
@@ -149,12 +166,15 @@ for dir in "${dirs[@]}"; do
 	if [ "$skip_optional" -ne 0 ]; then
 		build_args+=(-O)
 	fi
-	###build_args+=(-u)
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running ari_build ${build_args[@]}"
 	fi
-	"$ari_build" "${build_args[@]}" || \
-	  panic "build failed"
+	"$ari_build" "${build_args[@]}"
+	if [ $? -ne 0 ]; then
+		echo "build failed"
+		all_failures+=("$dir")
+		continue
+	fi
 
 	############################################################
 	# Test the packages for the assignment.
@@ -164,18 +184,23 @@ for dir in "${dirs[@]}"; do
 	if [ "$skip_optional" -ne 0 ]; then
 		test_args+=(-O)
 	fi
-	test_args+=(-v)
+	if [ "$verbose" -ge 1 ]; then
+		test_args+=(-v)
+	fi
 	test_args+=(-D "$debug_level")
 	test_args+=(-d "$project_dir")
-	#test_args+=(-u)
 	if [ "$reproducible" -ne 0 ]; then
 		test_args+=(-R)
 	fi
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Testing"
 	fi
-	"$ari_test" "${test_args[@]}" || \
-	  panic "test failed"
+	"$ari_test" "${test_args[@]}"
+	if [ $? -ne 0 ]; then
+		echo "test failed"
+		all_failures+=("$dir")
+		continue
+	fi
 
 	############################################################
 	# Generate the report for the assignment.
@@ -188,15 +213,21 @@ for dir in "${dirs[@]}"; do
 	report_args+=(-D "$debug_level")
 	report_args+=(-d "$project_dir")
 	report_args+=(-o "$project_dir/report.pdf")
-	#report_args+=(-u)
 	if [ "$reproducible" -ne 0 ]; then
 		report_args+=(-R)
 	fi
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Reporting"
 	fi
-	"$ari_report" "${report_args[@]}" || \
-	  panic "report failed"
+	#if [ "$verbose" -ge 1 ]; then
+	#	report_args+=(-v)
+	#fi
+	"$ari_report" "${report_args[@]}"
+	if [ $? -ne 0 ]; then
+		echo "report failed"
+		all_failures+=("$dir")
+		continue
+	fi
 
 	alt_report_file="$project_dir/report-$project-$section-$mangled_student_name-$student_id.pdf"
 	if [ -L "$alt_report_file" -o -e "$alt_report_file" ]; then
@@ -213,10 +244,17 @@ if [ "${#dirs[@]}" -gt 1 ]; then
 	Summary
 	############################################################
 	EOF
-	echo "Number of skipped items: ${#skipped_dirs[@]}"
-	if [ ${#skipped_dirs[@]} -gt 0 ]; then
-		echo "Skipped items:"
-		for dir in "${skipped_dirs[@]}"; do
+	echo "Number of validation failures: ${#validate_failures[@]}"
+	if [ ${#validate_failures[@]} -gt 0 ]; then
+		echo "Validation failures:"
+		for dir in "${validate_failures[@]}"; do
+			echo "$dir"
+		done
+	fi
+	echo "Total number of failures: ${#all_failures[@]}"
+	if [ ${#all_failures[@]} -gt 0 ]; then
+		echo "All failures:"
+		for dir in "${all_failures[@]}"; do
 			echo "$dir"
 		done
 	fi

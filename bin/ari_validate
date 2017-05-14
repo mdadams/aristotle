@@ -239,6 +239,7 @@ fi
 if [ "$student_name_status" -eq 0 ]; then
 	echo "$student_name" > "$student_name_file"
 else
+	student_name="Unknown"
 	eecho "ERROR: cannot determine student name"
 	num_errors=$((num_errors + 1))
 fi
@@ -263,6 +264,7 @@ if [ "$student_id_status" -eq 0 -a -n "$student_id_regex" ]; then
 	fi
 fi
 if [ "$student_id_status" -ne 0 ]; then
+	student_id="Unknown"
 	eecho "ERROR: cannot determine student ID"
 	num_errors=$((num_errors + 1))
 fi
@@ -281,6 +283,7 @@ fi
 if [ "$student_email_status" -eq 0 ]; then
 	echo "$student_email" > "$student_email_file"
 else
+	student_email="Unknown"
 	eecho "ERROR: cannot determine student email address"
 	num_errors=$((num_errors + 1))
 fi
@@ -304,6 +307,7 @@ if [ "$section_status" -eq 0 -a -n "$section_regex" ]; then
 	fi
 fi
 if [ "$section_status" -ne 0 ]; then
+	section="Unknown"
 	eecho "ERROR: cannot determine section"
 	num_errors=$((num_errors + 1))
 fi
@@ -339,8 +343,15 @@ if [ "${#validate_program[@]}" -ge 1 ]; then
 	fi
 fi
 
+if [ "$verbose" -ge 1 ]; then
+	echo "Student Name: $student_name"
+	#echo "Student ID: $student_id"
+	echo "Email: $student_email"
+	echo "Section: $section"
+fi
+
 if [ "$num_errors" -gt 0 ]; then
-	echo "number of errors: $num_errors"
+	echo "validation failed with $num_errors error(s)"
 	panic "validation failed"
 fi
 if [ "$verbose" -ge 1 ]; then

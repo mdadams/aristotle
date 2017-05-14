@@ -63,6 +63,8 @@ usage()
 	    Increase the verbosity level of output.
 	-f
 	    Perform the test and report-generation operations.
+	-R
+	    Enable reproducible mode (for testing).
 
 	Exit status:
 	0 all items successfully processed
@@ -87,9 +89,9 @@ in_sources=()
 in_type=
 in_subtype=
 verbose=0
-full=0
+reproducible=0
 
-while getopts FD:d:p:a:i:t:s:v option; do
+while getopts D:d:p:a:i:t:s:vR option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -107,8 +109,8 @@ while getopts FD:d:p:a:i:t:s:v option; do
 		in_subtype="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
-	F)
-		full=1;;
+	R)
+		reproducible=1;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -131,7 +133,9 @@ fi
 #	usage "no input type specified"
 #fi
 
-skipped_in_sources=()
+import_failures=()
+validate_failures=()
+all_failures=()
 
 for in_source in "${in_sources[@]}"; do
 
@@ -196,7 +200,8 @@ for in_source in "${in_sources[@]}"; do
 	"$ari_import" "${import_opts[@]}"
 	if [ $? -ne 0 ]; then
 		echo "import failed"
-		skipped_in_sources+=("$in_source")
+		import_failures+=("$in_source")
+		all_failures+=("$in_source")
 		continue
 	fi
 
@@ -211,7 +216,8 @@ for in_source in "${in_sources[@]}"; do
 
 	if [ "$validate_status" -ne 0 ]; then
 		eecho "THIS ASSIGNMENT WILL RECEIVE A MARK OF ZERO IF SUBMITTED!"
-		skipped_in_sources+=("$in_source")
+		validate_failures+=("$in_source")
+		all_failures+=("$in_source")
 		warn "skipping remainder of processing for input $in_source"
 		continue
 	fi
@@ -223,7 +229,7 @@ for in_source in "${in_sources[@]}"; do
 	"$ari_generate" "${generate_opts[@]}"
 	if [ $? -ne 0 ]; then
 		echo "generation failed"
-		skipped_in_sources+=("$in_source")
+		all_failures+=("$in_source")
 		continue
 	fi
 
@@ -231,47 +237,53 @@ for in_source in "${in_sources[@]}"; do
 	build_opts+=(-D "$debug_level")
 	build_opts+=(-d "$project_dir")
 	build_opts+=(-O)
+	if [ "$reproducible" -ne 0 ]; then
+		report_args+=(-R)
+	fi
 	if [ "$verbose" -ge 1 ]; then
 		build_opts+=(-v)
 	fi
 	"$ari_build" "${build_opts[@]}"
 	if [ $? -ne 0 ]; then
 		echo "build failed"
-		skipped_in_sources+=("$in_source")
+		all_failures+=("$in_source")
 		continue
 	fi
 
-	if [ "$full" -ne 0 ]; then
 
-		test_opts=()
-		test_opts+=(-D "$debug_level")
-		test_opts+=(-d "$project_dir")
-		test_opts+=(-O)
-		if [ "$verbose" -ge 1 ]; then
-			test_opts+=(-v)
-		fi
-		"$ari_test" "${test_opts[@]}"
-		if [ $? -ne 0 ]; then
-			echo "test failed"
-			skipped_in_sources+=("$in_source")
-			continue
-		fi
+	test_opts=()
+	test_opts+=(-D "$debug_level")
+	test_opts+=(-d "$project_dir")
+	test_opts+=(-O)
+	if [ "$reproducible" -ne 0 ]; then
+		report_args+=(-R)
+	fi
+	if [ "$verbose" -ge 1 ]; then
+		test_opts+=(-v)
+	fi
+	"$ari_test" "${test_opts[@]}"
+	if [ $? -ne 0 ]; then
+		echo "test failed"
+		all_failures+=("$in_source")
+		continue
+	fi
 
-		report_opts=()
-		report_opts+=(-D "$debug_level")
-		report_opts+=(-d "$project_dir")
-		report_opts+=(-o "$project_dir/report.pdf")
-		report_opts+=(-O)
-		#if [ "$verbose" -ge 1 ]; then
-		#	report_opts+=(-v)
-		#fi
-		"$ari_report" "${report_opts[@]}"
-		if [ $? -ne 0 ]; then
-			echo "test failed"
-			skipped_in_sources+=("$in_source")
-			continue
-		fi
-
+	report_opts=()
+	report_opts+=(-D "$debug_level")
+	report_opts+=(-d "$project_dir")
+	report_opts+=(-o "$project_dir/report.pdf")
+	report_opts+=(-O)
+	if [ "$reproducible" -ne 0 ]; then
+		report_args+=(-R)
+	fi
+	#if [ "$verbose" -ge 1 ]; then
+	#	report_opts+=(-v)
+	#fi
+	"$ari_report" "${report_opts[@]}"
+	if [ $? -ne 0 ]; then
+		echo "report failed"
+		all_failures+=("$in_source")
+		continue
 	fi
 
 done
@@ -282,14 +294,24 @@ if [ "${#in_sources[@]}" -gt 1 ]; then
 	Summary
 	############################################################
 	EOF
-	echo "Number of skipped items: ${#skipped_in_sources[@]}"
-	echo "Skipped items:"
-	for in_source in "${skipped_in_sources[@]}"; do
+	echo "Number of import failures: ${#import_failures[@]}"
+	echo "Import failures:"
+	for in_source in "${import_failures[@]}"; do
+		echo "$in_source"
+	done
+	echo "Number of validation failures: ${#validate_failures[@]}"
+	echo "Validation failures:"
+	for in_source in "${validate_failures[@]}"; do
+		echo "$in_source"
+	done
+	echo "Total number of failures: ${#all_failures[@]}"
+	echo "All failures:"
+	for in_source in "${all_failures[@]}"; do
 		echo "$in_source"
 	done
 fi
 
-if [ ${#skipped_in_sources[@]} -gt 0 ]; then
+if [ ${#all_failures[@]} -gt 0 ]; then
 	fatal_error 1 "one or more items could not be succesfully processed"
 fi
 
