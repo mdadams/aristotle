@@ -56,8 +56,8 @@ newline="
 "
 
 format=name
-org_name=
-assignment=
+org_names=()
+assignments=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
 
@@ -66,7 +66,7 @@ while getopts D:a:o:vf: option; do
 	D)
 		debug_level="$OPTARG";;
 	o)
-		org_name="$OPTARG";;
+		org_names+=("$OPTARG");;
 	a)
 		assignment="$OPTARG";;
 	v)
@@ -87,80 +87,88 @@ if [ ! -f "$gc_login_file" ]; then
 	panic "not logged in"
 fi
 
-query_url="https://api.github.com/orgs/$org_name/repos?per_page=100"
-while true; do
-	buffer=$("$ari_gc_curl" -D "$debug_level" -- -s -i "$query_url") || \
-	  panic "curl failed"
-	curl_status=$?
-	if [ "$curl_status" -ne 0 ]; then
-		panic "operation failed"
-	fi
-	if [ "$debug_level" -ge 1 ]; then
-		echo "=========="
-		echo "$buffer"
-		echo "=========="
-	fi
-	header_buffer=$(echo "$buffer" | curl_select header) || \
-	  panic "cannot get header"
-	json_buffer=$(echo "$buffer" | curl_select body) || \
-	  panic "cannot get body"
-	json_data="$json_data$json_buffer$newline"
-	link_buffer=$(echo "$header_buffer" | grep -e '^Link:')
-	if [ $? -ne 0 ]; then
-		break
-	fi
-	if [ "$debug_level" -ge 1 ]; then
-		echo "==="
-		echo "$link_buffer"
-		echo "==="
-	fi
-	query_url=$(echo "$link_buffer" | http_get_next_link)
-	status=$?
-	if [ "$status" -eq 3 ]; then
-		break
-	fi
-	if [ "$status" -ne 0 ]; then
-		panic "cannot get next link"
-	fi
-done
-
-if [ "$debug_level" -ge 1 ]; then
-	echo "JSON data:"
-	echo "$json_data"
+if [ "${#org_names[@]}" -eq 0 ]; then
+	panic "no organization specified"
 fi
 
-repos=$(echo "$json_data" | jq -r '.[] | .name') || \
-  panic "cannot get list of repositories"
-repos=($(echo "$repos" | sort)) || \
-  panic "cannot sort list of repositories"
+for org_name in "${org_names[@]}"; do
 
-selected_repos=()
-for repo in "${repos[@]}"; do
-	select=1
-	if [ -n "$assignment" ]; then
-		echo "$repo" | grep -q -e "^${assignment}-" > /dev/null
-		status=$?
-		if [ "$status" -eq 0 ]; then
-			select=1
-		elif [ "$status" -eq 1 ]; then
-			select=0
-		else
-			panic
+	json_data=""
+	query_url="https://api.github.com/orgs/$org_name/repos?per_page=100"
+	while true; do
+		buffer=$("$ari_gc_curl" -D "$debug_level" -- -s -i "$query_url") || \
+		  panic "curl failed"
+		curl_status=$?
+		if [ "$curl_status" -ne 0 ]; then
+			panic "operation failed"
 		fi
-	fi
-	if [ "$select" -ne 0 ]; then
-		selected_repos+=("$repo")
-	fi
-done
+		if [ "$debug_level" -ge 1 ]; then
+			echo "=========="
+			echo "$buffer"
+			echo "=========="
+		fi
+		header_buffer=$(echo "$buffer" | curl_select header) || \
+		  panic "cannot get header"
+		json_buffer=$(echo "$buffer" | curl_select body) || \
+		  panic "cannot get body"
+		json_data="$json_data$json_buffer$newline"
+		link_buffer=$(echo "$header_buffer" | grep -e '^Link:')
+		if [ $? -ne 0 ]; then
+			break
+		fi
+		if [ "$debug_level" -ge 1 ]; then
+			echo "==="
+			echo "$link_buffer"
+			echo "==="
+		fi
+		query_url=$(echo "$link_buffer" | http_get_next_link)
+		status=$?
+		if [ "$status" -eq 3 ]; then
+			break
+		fi
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get next link"
+		fi
+	done
 
-for repo in "${selected_repos[@]}"; do
-	case "$format" in
-	name)
-		echo "$repo";;
-	ssh|ssh_clone_url)
-		echo "git@github.com:$org_name/$repo.git";;
-	http|https|http_clone_url)
-		echo "https://github.com/$org_name/$repo.git";;
-	esac
+	if [ "$debug_level" -ge 1 ]; then
+		echo "JSON data:"
+		echo "$json_data"
+	fi
+
+	repos=$(echo "$json_data" | jq -r '.[] | .name') || \
+	  panic "cannot get list of repositories"
+	repos=($(echo "$repos" | sort)) || \
+	  panic "cannot sort list of repositories"
+
+	selected_repos=()
+	for repo in "${repos[@]}"; do
+		select=1
+		if [ -n "$assignment" ]; then
+			echo "$repo" | grep -q -e "^${assignment}-" > /dev/null
+			status=$?
+			if [ "$status" -eq 0 ]; then
+				select=1
+			elif [ "$status" -eq 1 ]; then
+				select=0
+			else
+				panic
+			fi
+		fi
+		if [ "$select" -ne 0 ]; then
+			selected_repos+=("$repo")
+		fi
+	done
+
+	for repo in "${selected_repos[@]}"; do
+		case "$format" in
+		name)
+			echo "$repo";;
+		ssh|ssh_clone_url)
+			echo "git@github.com:$org_name/$repo.git";;
+		http|https|http_clone_url)
+			echo "https://github.com/$org_name/$repo.git";;
+		esac
+	done
+
 done
-#echo "${repos[@]}"
