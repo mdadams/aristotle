@@ -65,6 +65,8 @@ usage()
 	    Perform the test and report-generation operations.
 	-R
 	    Enable reproducible mode (for testing).
+	-A
+	    Do not skip optional items.
 
 	Exit status:
 	0 all items successfully processed
@@ -90,8 +92,9 @@ in_type=
 in_subtype=
 verbose=0
 reproducible=0
+skip_optional=1
 
-while getopts D:d:p:a:i:t:s:vR option; do
+while getopts AD:d:p:a:i:t:s:vR option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -111,6 +114,8 @@ while getopts D:d:p:a:i:t:s:vR option; do
 		verbose=$((verbose + 1));;
 	R)
 		reproducible=1;;
+	A)
+		skip_optional=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -225,7 +230,9 @@ for in_source in "${in_sources[@]}"; do
 	generate_opts=()
 	generate_opts+=(-D "$debug_level")
 	generate_opts+=(-d "$project_dir")
-	generate_opts+=(-O)
+	if [ "$skip_optional" -ne 0 ]; then
+		generate_opts+=(-O)
+	fi
 	"$ari_generate" "${generate_opts[@]}"
 	if [ $? -ne 0 ]; then
 		echo "generation failed"
@@ -236,7 +243,9 @@ for in_source in "${in_sources[@]}"; do
 	build_opts=()
 	build_opts+=(-D "$debug_level")
 	build_opts+=(-d "$project_dir")
-	build_opts+=(-O)
+	if [ "$skip_optional" -ne 0 ]; then
+		build_opts+=(-O)
+	fi
 	if [ "$reproducible" -ne 0 ]; then
 		report_args+=(-R)
 	fi
@@ -254,7 +263,9 @@ for in_source in "${in_sources[@]}"; do
 	test_opts=()
 	test_opts+=(-D "$debug_level")
 	test_opts+=(-d "$project_dir")
-	test_opts+=(-O)
+	if [ "$skip_optional" -ne 0 ]; then
+		test_opts+=(-O)
+	fi
 	if [ "$reproducible" -ne 0 ]; then
 		report_args+=(-R)
 	fi
@@ -272,7 +283,9 @@ for in_source in "${in_sources[@]}"; do
 	report_opts+=(-D "$debug_level")
 	report_opts+=(-d "$project_dir")
 	report_opts+=(-o "$project_dir/report.pdf")
-	report_opts+=(-O)
+	if [ "$skip_optional" -ne 0 ]; then
+		report_opts+=(-O)
+	fi
 	if [ "$reproducible" -ne 0 ]; then
 		report_args+=(-R)
 	fi
