@@ -40,7 +40,7 @@ usage()
 	-d install_dir
 	    Set the install directory to install_dir.
 	-a assignments_dir
-	    Set the default assignments directory to assignments_dir.
+	    Set the default assignment-definition directory to assignments_dir.
 	-c
 	    Remove old files first.
 	for example:

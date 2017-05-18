@@ -31,6 +31,26 @@ widely-available programs, including:
     jq (which is required for GitHub Classroom functionality)
 
 
+Installation
+============
+
+In what follows, let $TOP_DIR denote the top-level directory of the
+Aristotle software distribution, and let $INSTALL_DIR denote the
+directory in which Aristotle is to be installed.
+To install the Aristotle software, simply use a command like:
+
+    $TOP_DIR/installer -d $INSTALL_DIR
+
+The installer program accepts a number of options.
+For details regarding the supported options, run the installer without
+any arguments as follows:
+
+    $TOP_DIR/installer
+
+The default value for the assignment-definition directory chosen by the
+installer can be overridden with the "-a" option.
+
+
 Assignment Properties
 =====================
 
