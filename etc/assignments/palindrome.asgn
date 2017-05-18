@@ -1,4 +1,4 @@
-# Specify a short name or description for the assignment.
+# Specify a name or short description for the assignment.
 name "Palindrome Test"
 # Specify the files that must be included in the assignment submission.
 required_files IDENTIFICATION.txt CMakeLists.txt is_palindrome.cpp
@@ -9,7 +9,7 @@ report_files CMakeLists.txt is_palindrome.cpp
 # "original").
 packages original
 
-# Specify a short name or description for the "original" package.
+# Specify a name or short description for the "original" package.
 package-original/name "The original code exactly as submitted by the student."
 # Specify the build targets for the "original" package (i.e., one called
 # "is_palindrome").
@@ -18,17 +18,17 @@ package-original/builds is_palindrome
 # "is_palindrome").
 package-original/tests is_palindrome
 
-# Specify a short name or description for the "is_palindrome" build target.
+# Specify a name or short description for the "is_palindrome" build target.
 package-original/build-is_palindrome/name "Build the is_palindrome program."
 
-# Specify a short name or description for the "is_palindrome" test target.
+# Specify a name or short description for the "is_palindrome" test target.
 package-original/test-is_palindrome/name "Test the is_palindrome program."
 # Request that the test should only be performed if the associated build
 # target "is_palindrome" is successfully built.
 package-original/test-is_palindrome/depends_on build-is_palindrome
 # Set the maximum time (in seconds) allowed for the test to 10.
 package-original/test-is_palindrome/timeout 10
-# Specify the program/script to be invoked to perform the test.
+# Specify the command (including arguments) to be invoked to perform the test.
 # Note: ${ARI_ASSIGNMENTS_DIR} is the directory containing this assignment
 # definition file and ${ARI_DERIVED_DIR} is the directory containing the
 # program to be tested.

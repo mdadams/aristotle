@@ -1,57 +1,280 @@
-Properties
-==========
+Aristotle Software Manual
+=========================
 
-assignment properties
+A brief overview of the Aristotle software can be found in the following
+paper:
 
-	name
-	required_files
-	whitelisted_files
-	blacklisted_files
-	report_files
-	validate
-	packages
+    Michael D. Adams
+    Aristotle: A Flexible Open-Source Toolkit for Semi-Automated Marking of
+    Programming Assignments
+    submitted to the IEEE Pacific Rim Conference on Computers, Communications,
+    and Signal Processing,
+    Victoria, BC, Canada
+    May 2017
+    (6 pages)
 
-package properties
+The contents of this file are meant to supplement the information in the above
+paper.
 
-	name
-	optional
-	generate
-	build_tool (valid values: auto, cmake, make, user)
-	configure
-	build
-	builds
-	tests
-	out_of_source_build
 
-build target properties
+Installation Prerequisites
+==========================
 
-	name
-	executables
-	depends_on
-	optional
+The Aristotle software utilizes numerous programs that should be available
+on most mainstream Unix-based platforms.  These programs include bash,
+awk, and python.  In addition, Aristotle requires several other
+widely-available programs, including:
 
-test target properties
+    a2ps
+    pdfjam
+    recode
+    jq (which is required for GitHub Classroom functionality)
 
-	name
-	test
-	timeout
-	depends_on
-	optional
-	manual
+
+Assignment Properties
+=====================
+
+Assignment definition files can specify many properties for an assignment.
+The various properties associated with an assignment are described below.
+
+The following are properties of the assignment as a whole:
+
+    name
+    A name or short description of the assignment.
+    Default value: The assignment ID.
+
+    required_files
+    A list of all of the files that must be included in an assignment
+    submission.
+    Default value: An empty list.
+
+    whitelisted_files
+    A list of files/directories that may optionally be included in an
+    assignment submission.
+    Default value: An empty list.
+
+    blacklisted_files
+    A list of files/directories that are forbidden from being included in an
+    assignment submission.
+    Default value: An empty list.
+
+    report_files
+    A list of files that are to be included in the generated report.
+    Default value: An empty list.
+
+    validate
+    The command to be used to perform any additional user-defined validation
+    checks for an assignment submission.
+    Default value: If no validation command is specified, no user-defined
+    validation checks are performed.
+
+    packages
+    A list of the packages for the assignment.
+    Default value: An empty list.
+
+    student_info_program
+    The command to be used to extract student information from an assignment
+    submission.
+    Default value: The default behavior is to extract the information from
+    a file called IDENTIFICATION.txt.
+
+    student_id_regex
+    A regular expression that a student ID must match in order to be deemed
+    valid.
+    Default value: If no value is specified, a student ID is always deemed
+    to be valid.
+
+    section_regex
+    A regular expression that a course/lab/tutorial section must match in order
+    to be deemed valid.
+    Default value: If no value is specified, a section is always deemed to be
+    valid.
+
+The following are properties of a package within an assignment:
+
+    name
+    A name or short description of the package.
+    Default value: The package ID.
+
+    optional
+    A boolean flag indicating if the package is optional.
+    Valid values: 0 (false) or 1 (true)
+    Default value: 0
+
+    generate
+    The command to be used to generate the package.
+    Default value: If no command is specified, the identity transformation
+    is used to generate the package (i.e., the package will be identical
+    to the original assignment submission).
+
+    build_tool (valid values: auto, cmake, make, user)
+    The tool to be used to build the code in the assignment submission.
+    Valid values:
+        auto
+            automatically determine the build tool based on files in
+            assignment submission)
+        cmake
+            use CMake
+        make
+            use Make
+        user
+            use a user-specified tool
+    Default value: auto
+
+    configure
+    Specify the command to be used for (per-build) configuration in the case
+    that a user-specified build tool is being employed.
+    Default value: None.
+    Note: This property only needs to be specified if a user-specified
+    build tool is being employed.
+
+    build
+    Specify the command to be used for building code in the case
+    that a user-specified build tool is being employed.
+    Default value: None.
+    Note: This property only needs to be specified if a user-specified
+    build tool is being employed.
+
+    builds
+    A list of the build targets for the package.
+    Default value: An empty list.
+
+    tests
+    A list of the test targets for the package.
+    Default value: An empty list.
+
+    out_of_source_build
+    This property is deprecated and should not be used.
+
+The following are properties of a build target within a package:
+
+    name
+    The name or a short description of the build target.
+    Default value: The build target ID.
+
+    executables
+    The executable files (if any) produced by building the build target.
+    Default value: The build target ID.
+
+    depends_on
+    A list of dependencies that must be processed before building this build
+    target.
+    Default value: An empty list.
+
+    optional
+    A boolean flag indicating if the build target is optional.
+    Valid values: 0 (false) or 1 (true)
+    Default value: 0
+
+The following are properties of a test target within a package:
+
+    name
+    The name or a short description of the test target.
+    Default value: The test target ID.
+
+    test
+    The command to be invoked to perform the test associated with the test
+    target.
+    Default value: None.
+    Note: This property must be specified unless the test is manual.
+
+    timeout
+    The maximum amount of time (in seconds) allowed for the test associated
+    with this test target.
+    Default value: 300
+
+    depends_on
+    A list of dependencies that must be processed before testing this test
+    target.
+    Default value: An empty list.
+
+    optional
+    A boolean flag indicating if the test target is optional.
+    Valid values: 0 (false) or 1 (true)
+    Default value: 1
+
+    manual
+    A boolean flag indicating if the test target is associated with a
+    manually-performed test.
+    Valid values: 0 (false) or 1 (true)
+    Default value: 0
+
+
+Variables in Assignment-Definition Files
+========================================
+
+A number of variables are available for use in assignment-definition files.
+In particular, these variables are for use in specifying user-defined
+commands (e.g., commands for validation, configuring, building, and testing).
+The following variables are available:
+
+    ARI_BIN_DIR
+    The bin directory for the Aristotle software
+    (i.e., the directory in which the Aristotle commands are installed).
+
+    ARI_ASSIGNMENTS_DIR
+    The assignment-definition directory
+    (i.e., the directory in which assignment-definitions files can be found).
+
+    ARI_SOURCE_DIR
+    The directory that contains the source code for a package.
+
+    ARI_DERIVED_DIR
+    The directory that contains the output of the build process for a package.
+
+    ARI_INSTALL_DIR
+    The directory to be used for installing the software built for a package.
+    This directory is only relevant if the build tool that is being employed
+    uses this directory.
+
+    ARI_SUBMISSION_SOURCE
+    The name of the input source that was specified when an assignment
+    submission is imported
+    (e.g., a Git repository URL, a pathname for an archive file, or a
+    pathname for a directory).
+
+    ARI_TEST_RESULT_FILE
+    The name of the file to which a test program should output information
+    regarding the number of failed test cases encountered.
+
+    ARI_DIST_DIR
+    The directory that contains the original assignment submission exactly
+    as it was provided at the time of import.
 
 
 Identification
 ==============
 
-name
-student_id
-email
-section
-assignment
+The fields in the IDENTIFICATION.txt file are as follows:
+
+    name
+    The full name of the student.
+
+    student_id
+    A unique identifier associted with the student.
+
+    email
+    The email address of the student.
+
+    section
+    The lecture/lab/tutorial section of the course in which the student
+    is registered.
+
+    assignment
+    The assignment ID of the assignment with which the assignment submission
+    is associated.
 
 
 Commands
 ========
+
+A simple demonstration of the Aristotle software is available through
+the following command:
+
+ari_demo
+
+The main command-line interface for Aristotle is provided through the
+following commands:
 
 ari_import
 ari_process
@@ -65,20 +288,15 @@ ari_report
 
 assignment_precheck
 
-ari_gc_*
-ari_git_*
+The following commands provide support for GitHub Classroom:
 
-
-Installation Prerequisites
-==========================
-
-numerous standard Unix commands, including:
-awk
-python
-a2ps
-pdfjam
-recode
-
-required for GitHub Classroom functionality:
-jq
+ari_gc_createrepo
+ari_gc_deleterepo
+ari_gc_downloadrepo
+ari_gc_login
+ari_gc_logout
+ari_gc_lsrepo
+ari_gc_makerelease
+ari_gc_makerepo
+ari_gc_tagrepo
 
