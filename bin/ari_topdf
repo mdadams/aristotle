@@ -75,6 +75,8 @@ usage()
 	    Increase the verbosity level of output.
 	-l numbering
 	    Set the line numbering for the next input file to numbering.
+	-C
+	    Do not perform cleanup.
 	EOF
 	exit 2
 }
@@ -106,7 +108,7 @@ cur_language=
 verbose=0
 debug_level=0
 
-while getopts D:f:i:o:t:u:vl option; do
+while getopts CD:f:i:o:t:u:vl option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -135,6 +137,8 @@ while getopts D:f:i:o:t:u:vl option; do
 		verbose=$((verbose+1));;
 	l)
 		cur_numbering=1;;
+	C)
+		cleanup=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -243,6 +247,9 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		if [ "$num_lines" -eq 0 ]; then
 			file="$blank_file"
 		fi
+		if [ "$debug_level" -ge 2 ]; then
+			eecho "Running a2ps ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
+		fi
 		cat "$file" | preprocess | \
 		  a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
@@ -254,6 +261,9 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 			file="$blank_file"
 		fi
 		#a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - "$file" \
+		if [ "$debug_level" -ge 2 ]; then
+			eecho "Running a2ps ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
+		fi
 		cat "$file" | a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
 		  ps2pdf - - > "$tmp_file" || \
@@ -283,9 +293,11 @@ if [ "$debug_level" -ge 1 ]; then
 fi
 pdfjam "${pdfjam_opts[@]}" 2> /dev/null || panic "pdfjam failed"
 
-for file in "${tmp_files[@]}"; do
-	rm "$file" || panic "cannot remove file $file"
-done
+if [ "$cleanup" -ne 0 ]; then
+	for file in "${tmp_files[@]}"; do
+		rm "$file" || panic "cannot remove file $file"
+	done
+fi
 
 if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
 	rm -rf "$tmp_dir" || echo "cannot remove temporary directory $tmp_dir"

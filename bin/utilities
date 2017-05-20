@@ -68,7 +68,15 @@ auth_curl()
 
 count_lines()
 {
-	cat "$1" | wc -l | awk '{print $1;}' -
+	# Note:
+	# The command "wc -l" only counts newline characters.
+	# So, using the "wc -l" command will give an incorrect line count
+	# for a non-empty file that does not end with a newline character.
+	# For example, a single-line text file without a newline character
+	# will be reported by "wc -l" as having zero lines, which is incorrect.
+	# Using awk avoids this problem.
+	# cat "$1" | wc -l | awk '{print $1;}' -
+	cat "$1" | awk 'END {print NR;}' -
 }
 
 pathname_relative_to()

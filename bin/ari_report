@@ -100,6 +100,10 @@ usage()
 	    Set the output file for the report to report_file.
 	-v
 	    Increase the verbosity level.
+	-C
+	    Do not perform cleanup.
+	-R
+	    Make output reproducible.
 	EOF
 	exit 2
 }
@@ -129,7 +133,7 @@ packages=()
 skip_unavailable=0
 skip_optional=0
 
-while getopts ORD:d:o:p:vu option; do
+while getopts CORD:d:o:p:vu option; do
 	case "$option" in
 	R)
 		reproducible=1;;
@@ -147,6 +151,8 @@ while getopts ORD:d:o:p:vu option; do
 		out_file="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
+	C)
+		cleanup=0;;
 	*)
 		usage "invalid option $option";;
 	esac
