@@ -83,8 +83,9 @@ verbose=0
 all_assignments=0
 delay=1
 check_ssh_key=1
+rev_time=
 
-while getopts ZAD:o:w:b:a:t:dck:vq option; do
+while getopts ZAD:o:w:b:a:t:dck:vqT: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -104,6 +105,8 @@ while getopts ZAD:o:w:b:a:t:dck:vq option; do
 		operation=verify;;
 	k)
 		signing_key="$OPTARG";;
+	T)
+		rev_time="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
 	q)
@@ -184,6 +187,9 @@ for repo in "${repos[@]}"; do
 	clone_url="ssh://git@github.com/$organization/$repo.git"
 
 	opts=()
+	if [ -n "$rev_time" ]; then
+		opts+=(-T "$rev_time")
+	fi
 	if [ -n "$branch" ]; then
 		opts+=(-b "$branch")
 	fi

@@ -73,8 +73,9 @@ signing_key=
 debug_level=0
 verbose=0
 gpg_program=
+rev_time=
 
-while getopts D:b:t:dck:vg: option; do
+while getopts D:b:t:dck:vg:T: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -94,6 +95,8 @@ while getopts D:b:t:dck:vg: option; do
 		verbose=$((verbose + 1));;
 	g)
 		gpg_program="$OPTARG";;
+	T)
+		rev_time="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -204,13 +207,33 @@ while true; do
 		break
 	fi
 
+	if [ -n "$rev_time" ]; then
+		commit=$(GIT_DIR="$git_dir/.git" \
+		  conditionally_discard_output "$discard_stderr" \
+		  git rev-list -n 1 --date=local --before="$rev_time" "$branch")
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "cannot find commit with time $rev_time"
+			break
+		fi
+		if [ -z "$commit" ]; then
+			command_status=1
+			perror "no commit found with time $rev_time"
+			break
+		fi
+		if [ "$verbose" -ge 1 ]; then
+			echo "using dated commit $commit"
+		fi
+		branch="$commit"
+	fi
+
 	if [ -n "$branch" ]; then
 		(chdir "$git_dir" && \
 		  conditionally_discard_output "$discard_stdout_stderr" \
 		  git checkout "$branch")
 		if [ $? -ne 0 ]; then
 			command_status=1
-			perror "cannot checkout branch/tag $branch"
+			perror "cannot checkout branch/tag/commit $branch"
 			break
 		fi
 	fi

@@ -340,3 +340,28 @@ print_status()
 	printf "%-16.16s %-12.12s %-16.16s %-s\n" \
 	  "$package" "$operation" "$target" "$info"
 }
+
+#line_terminator()
+#{
+#	local in_file="$1"
+#	local format="unknown"
+#	local unix_format=0
+#	local dos_format=0
+#	unix2dos < "$in_file" | cmp -s - "$in_file" && dos_format=1
+#	dos2unix < "$in_file" | cmp -s - "$in_file" && unix_format=1
+#	if [ "$unix_format" -ne 0 ]; then
+#		echo unix
+#	elif [ "$dos_format" -ne 0 ]; then
+#		echo dos
+#	else
+#		echo unknown
+#	fi
+#}
+
+line_terminator()
+{
+	local in_file="$1"
+	local format=unix
+	grep -q -U -e $'\r' "$in_file" && format=dos
+	echo "$format"
+}
