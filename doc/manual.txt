@@ -4,17 +4,19 @@ Aristotle Software Manual
 A brief overview of the Aristotle software can be found in the following
 paper:
 
-    Michael D. Adams
-    Aristotle: A Flexible Open-Source Toolkit for Semi-Automated Marking of
-    Programming Assignments
-    submitted to the IEEE Pacific Rim Conference on Computers, Communications,
-    and Signal Processing,
-    Victoria, BC, Canada
-    May 2017
-    (6 pages)
+    Michael D. Adams, Aristotle: A Flexible Open-Source Toolkit for
+    Semi-Automated Marking of Programming Assignments, in Proc. of IEEE
+    Pacific Rim Conference on Computers, Communications, and Signal
+    Processing, Victoria, BC, Canada, May 2017 (6 pages).
 
-The contents of this file are meant to supplement the information in the above
-paper.
+A preprint version of this paper is included in the file:
+
+   adams_pacrim_2017.pdf 
+
+The contents of this manual are meant to supplement the information in
+the above paper and focus primarily on details not provided in the paper.
+Therefore, it is advisable to read the paper before reading the contents
+of this manual.
 
 
 Installation Prerequisites
