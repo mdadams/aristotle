@@ -31,23 +31,37 @@ usage()
 	$0 [options] program [program_option...]
 
 	Options:
-	-t timeout
+	-s \$signal
+	    Set the signal to be sent to the process to \$signal.
+	    The default value for \$signal is SIGTERM.
+	-t \$timeout
+	    Send a signal to the process if it is still running after a period of \$timeout.
+	-k \$timeout
+	    Send a SIGKILL signal to the process if it is still running after a
+	    period of \$timeout elapses from the initial SIGTERM signal being sent.
 	-v
+	    Increase the verbosity of the output.
 	EOF
 	exit 2
 }
 
+signal=SIGTERM
 allow_break=1
 debug_level=${ARI_DEBUG_LEVEL:-0}
 timeout=
+kill_after_timeout=10
 verbose=0
 
-while getopts t:D:v option; do
+while getopts t:D:vk:s: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
+	s)
+		signal="$OPTARG";;
 	t)
 		timeout="$OPTARG";;
+	k)
+		kill_after_timeout="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
 	*)
@@ -70,13 +84,13 @@ if [ -n "$timeout" ]; then
 	if [ "$allow_break" -ne 0 ]; then
 		pid=
 		trap '[ -n "$pid" ] && kill -INT -$pid' INT
-		timeout -s SIGKILL "${timeout}s" \
+		timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
 		  "$program_file" "${program_options[@]}" &
 		pid=$!
 		wait $pid
 		status=$?
 	else
-		timeout -s SIGKILL "${timeout}s" \
+		timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
 		  "$program_file" "${program_options[@]}"
 		status=$?
 	fi
