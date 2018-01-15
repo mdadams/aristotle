@@ -2,12 +2,13 @@
 
 usage()
 {
-	echo "bad usage"
+	echo "bad usage: $@"
 	exit 2
 }
 
 panic()
 {
+	echo "ERROR: $@"
 	exit 1
 }
 
@@ -26,22 +27,30 @@ get_nth_word()
 	awk -v n="$1" '{print $n;}' -
 }
 
+cmd_dir=$(dirname "$0") || exit 1
+ari_timeout="$cmd_dir/ari_timeout"
+
 user="$whoami"
 host=$(hostname)
-#tmp_dir=/tmp/ari_run_catch_app-$user@$host-$$
-tmp_dir=/tmp/ari_run_catch_app-$user@$host
+tmp_dir=/tmp/ari_run_catch_app-$user@$host-$$
 log_file="$tmp_dir/log_file"
+debug_level=${ARI_DEBUG_LEVEL:-0}
 
 command=
 result=0
-result_file="$ARI_RESULT_FILE"
+result_file="$ARI_TEST_RESULT_FILE"
+timeout=
 
-while getopts c:r opt; do
+while getopts D:c:rt: opt; do
 	case $opt in
 	c)
 		command="$OPTARG";;
+	t)
+		timeout="$OPTARG";;
 	r)
 		result=1;;
+	D)
+		debug_level="$OPTARG";;
 	\?)
 		usage
 		break;;
@@ -51,53 +60,88 @@ shift $((OPTIND - 1))
 
 if [ "$result" -ne 0 ]; then
 	if [ -z "$result_file" ]; then
-		panic
+		panic "no result file specified"
 	fi
 fi
 
-mkdir -p "$tmp_dir" || panic
+mkdir -p "$tmp_dir" || panic "cannot make directory $tmp_dir"
 
-"$command" -r console > "$log_file" 2> /dev/null
-status=$?
+if [ -n "$timeout" ]; then
+	"$ari_timeout" -t "$timeout" -k 10 "$command" -r console > "$log_file" 2> /dev/null
+	status=$?
+else
+	"$command" -r console > "$log_file" 2> /dev/null
+	status=$?
+fi
 
+completed=1
 if [ "$status" -ne 0 ]; then
-	buffer=$(get_nth_last_line 3 "$log_file")
-	total_tests=$(echo "$buffer" | get_nth_word 3) || panic
-	passed_tests=$(echo "$buffer" | get_nth_word 5) || panic
-	failed_tests=$(echo "$buffer" | get_nth_word 8) || panic
-	#echo "BUFFER $buffer"
-	buffer=$(get_nth_last_line 2 "$log_file")
-	total_assertions=$(echo "$buffer" | get_nth_word 2) || panic
-	passed_assertions=$(echo "$buffer" | get_nth_word 4) || panic
-	failed_assertions=$(echo "$buffer" | get_nth_word 7) || panic
-	#echo "BUFFER $buffer"
-
-	echo "total tests $total_tests"
-	echo "passed tests $passed_tests"
-	echo "failed tests $failed_tests"
-	echo "total assertions $total_assertions"
-	echo "passed assertions $passed_assertions"
-	echo "failed assertions $failed_assertions"
 	if [ "$status" -ge 128 ]; then
-		result="0 $failed_assertions/$total_assertions $failed_tests/$total_tests"
+		completed=0
+	fi
+	buffer=$(get_nth_last_line 3 "$log_file")
+	total_tests=$(echo "$buffer" | get_nth_word 3) || \
+	  panic "cannot get total tests"
+	passed_tests=$(echo "$buffer" | get_nth_word 5) || \
+	  panic "cannot get passed tests"
+	failed_tests=$(echo "$buffer" | get_nth_word 8) || \
+	  panic "cannot get failed tests"
+	buffer=$(get_nth_last_line 2 "$log_file")
+	total_assertions=$(echo "$buffer" | get_nth_word 2) || \
+	  panic "cannot get total assertions"
+	passed_assertions=$(echo "$buffer" | get_nth_word 4) || \
+	  panic "cannot get passed assertions"
+	failed_assertions=$(echo "$buffer" | get_nth_word 7) || \
+	  panic "cannot get failed assertions"
+
+	#eecho "total tests $total_tests"
+	#eecho "passed tests $passed_tests"
+	#eecho "failed tests $failed_tests"
+	#eecho "total assertions $total_assertions"
+	#eecho "passed assertions $passed_assertions"
+	#eecho "failed assertions $failed_assertions"
+	if [ "$completed" -eq 0 ]; then
+		result_message="FAIL,$failed_assertions/$total_assertions,$failed_tests/$total_tests"
 	else
-		result="1 $failed_assertions/$total_assertions $failed_tests/$total_tests"
+		result_message="INC,$failed_assertions/$total_assertions,$failed_tests/$total_tests"
 	fi
 else
 	buffer=$(get_nth_last_line 2 "$log_file" | tr '()' '  ')
-	total_assertions=$(echo "$buffer" | get_nth_word 4) || panic
-	total_tests=$(echo "$buffer" | get_nth_word 7) || panic
-	#echo "BUFFER $buffer"
-	result="1 0/$total_assertions 0/$total_tests"
+	total_assertions=$(echo "$buffer" | get_nth_word 4) || \
+	  panic "cannot get total assertions"
+	total_tests=$(echo "$buffer" | get_nth_word 7) || \
+	  panic "cannot get total tests"
+	result_message="PASS,0/$total_assertions,0/$total_tests"
 fi
-
-cat "$log_file"
-echo "STATUS $status"
-echo "RESULT $result"
 
 if [ "$result" -ne 0 ]; then
-	echo "$result" > "$result_file" || panic
+	echo "$result_message" > "$result_file" || \
+	  panic "cannot create result file"
 fi
+
+cat "$log_file" || panic "cannot copy log file"
+echo "SUMMARY OF TEST APPLICATION RESULTS:"
+if [ "$status" -ne 0 ]; then
+	if [ "$completed" -eq 1 ]; then
+		completed_message="complete"
+	else
+		completed_message="incomplete"
+	fi
+	cat <<- EOF
+	failed assertions: $failed_assertions/$total_assertions ($complete)"
+	failed tests: $failed_tests/$total_tests ($complete)"
+	status: fail ($completed_message)"
+	EOF
+else
+	cat <<- EOF
+	failed assertions: 0/$total_assertions
+	failed tests: 0/$total_tests
+	status: pass
+	EOF
+fi
+
+rm -f "$log_file"
+rmdir "$tmp_dir"
 
 if [ "$status" -ne 0 ]; then
 	exit 1

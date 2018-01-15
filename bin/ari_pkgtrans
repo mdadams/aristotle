@@ -1,0 +1,227 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+default_assignments_dir="$cmd_dir/../etc/default_assignments"
+assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	$0
+	usage: $0 [options]
+	options:
+	EOF
+	exit 2
+}
+
+get_num_words()
+{
+	local buffer="$1"
+	local n=$(echo "$buffer" | tr -cd , | wc -c) || return 1
+	n=$((n + 1))
+	echo "$n"
+}
+
+get_nth_word()
+{
+	local n="$1"
+	local buffer="$2"
+	echo "$buffer" | tr ',' ' ' | awk -v n="$n" '{print $n;}' -
+}
+
+get_nth_word_special()
+{
+	local n="$1"
+	local buffer="$2"
+	local m=$(get_num_words "$buffer") || return 1
+	if [ "$n" -gt "$m" ]; then
+		n="$m"
+	fi
+	get_nth_word "$n" "$buffer"
+}
+
+ari_lndir="$cmd_dir/ari_lndir"
+
+show_only=0
+verbose=0
+
+while getopts nv option; do
+	case "$option" in
+	n)
+		show_only=1;;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+cur_dir="."
+src_dir="."
+
+while [ $# -gt 0 ]; do
+
+	command="$1"
+	shift 1
+
+	case "$command" in
+	cur_dir)
+		if [ $# -lt 1 ]; then
+			panic "no directory specified"
+		fi
+		dir="$1"
+		shift 1
+		if [ ! -d "$dir" ]; then
+			panic "directory does not exist $dir"
+		fi
+		cur_dir="$dir"
+		;;
+	src_dir)
+		if [ $# -lt 1 ]; then
+			panic "no directory specified"
+		fi
+		dir="$1"
+		shift 1
+		if [ ! -d "$dir" ]; then
+			panic "directory does not exist $dir"
+		fi
+		src_dir="$dir"
+		;;
+	lndir)
+		if [ $# -lt 1 ]; then
+			panic "no directory specified"
+		fi
+		dir="$1"
+		shift 1
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			(cd "$cur_dir" && "$ari_lndir" "$dir") || panic
+		else
+			echo "cd $cur_dir && $ari_lndir $dir"
+		fi
+		;;
+	replace)
+		if [ $# -lt 1 ]; then
+			panic "no source/destination file specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		spec="$1"
+		src=$(get_nth_word_special 1 "$spec") || panic
+		dst=$(get_nth_word_special 2 "$spec") || panic
+		src_path="$src_dir/$src"
+		dst_path="$cur_dir/$dst"
+		if [ "$show_only" -eq 0 ]; then
+			if [ ! -L "$dst_path" -a ! -f "$dst_path" ]; then
+				panic "file to be replaced does not exist"
+			fi
+			rm -f "$dst_path" || panic "cannot remove file to be replaced"
+			cp "$src_path" "$dst_path" || panic "cannot copy file"
+		else
+			echo "copying $src_path over $dst_path"
+		fi
+		shift 1
+		;;
+	copy)
+		if [ $# -lt 1 ]; then
+			panic
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		spec="$1"
+		shift 1
+		src=$(get_nth_word_special 1 "$spec") || panic
+		dst=$(get_nth_word_special 2 "$spec") || panic
+		src_path="$src_dir/$src"
+		dst_path="$cur_dir/$dst"
+		if [ "$show_only" -eq 0 ]; then
+			cp "$src_path" "$dst_path" || panic "cannot copy file"
+		else
+			echo "copying $src_path to $dst_path"
+		fi
+		;;
+	remove)
+		if [ $# -lt 1 ]; then
+			panic "no file specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		spec="$1"
+		shift 1
+		path=$(get_nth_word 1 "$spec") || panic
+		target_path="$cur_dir/$path"
+		if [ "$show_only" -eq 0 ]; then
+			if [ ! -L "$target_path" -a ! -f "$target_path" ]; then
+				panic "file to be deleted does not exist"
+			fi
+			rm -f "$target_path" || panic "cannot remove file"
+		else
+			echo "removing $target_path"
+		fi
+		;;
+	symlink)
+		if [ $# -lt 1 ]; then
+			panic
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		spec="$1"
+		shift 1
+		src=$(get_nth_word_special 1 "$spec") || panic
+		dst=$(get_nth_word_special 2 "$spec") || panic
+		src_path="$src_dir/$src"
+		dst_path="$cur_dir/$dst"
+		if [ "$show_only" -eq 0 ]; then
+			ln -s "$src_path" "$dst_path" || panic "cannot create symlink"
+		else
+			echo "linking $src_path to $dst_path"
+		fi
+		;;
+	*)
+		;;
+	esac
+
+done
