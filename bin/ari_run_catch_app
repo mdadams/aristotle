@@ -1,0 +1,106 @@
+#! /usr/bin/env bash
+
+usage()
+{
+	echo "bad usage"
+	exit 2
+}
+
+panic()
+{
+	exit 1
+}
+
+get_nth_last_line()
+{
+	local n="$1"
+	shift 1
+	cat "$@" | tail -n "$n" | head -n 1
+}
+
+get_nth_word()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	awk -v n="$1" '{print $n;}' -
+}
+
+user="$whoami"
+host=$(hostname)
+#tmp_dir=/tmp/ari_run_catch_app-$user@$host-$$
+tmp_dir=/tmp/ari_run_catch_app-$user@$host
+log_file="$tmp_dir/log_file"
+
+command=
+result=0
+result_file="$ARI_RESULT_FILE"
+
+while getopts c:r opt; do
+	case $opt in
+	c)
+		command="$OPTARG";;
+	r)
+		result=1;;
+	\?)
+		usage
+		break;;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ "$result" -ne 0 ]; then
+	if [ -z "$result_file" ]; then
+		panic
+	fi
+fi
+
+mkdir -p "$tmp_dir" || panic
+
+"$command" -r console > "$log_file" 2> /dev/null
+status=$?
+
+if [ "$status" -ne 0 ]; then
+	buffer=$(get_nth_last_line 3 "$log_file")
+	total_tests=$(echo "$buffer" | get_nth_word 3) || panic
+	passed_tests=$(echo "$buffer" | get_nth_word 5) || panic
+	failed_tests=$(echo "$buffer" | get_nth_word 8) || panic
+	#echo "BUFFER $buffer"
+	buffer=$(get_nth_last_line 2 "$log_file")
+	total_assertions=$(echo "$buffer" | get_nth_word 2) || panic
+	passed_assertions=$(echo "$buffer" | get_nth_word 4) || panic
+	failed_assertions=$(echo "$buffer" | get_nth_word 7) || panic
+	#echo "BUFFER $buffer"
+
+	echo "total tests $total_tests"
+	echo "passed tests $passed_tests"
+	echo "failed tests $failed_tests"
+	echo "total assertions $total_assertions"
+	echo "passed assertions $passed_assertions"
+	echo "failed assertions $failed_assertions"
+	if [ "$status" -ge 128 ]; then
+		result="0 $failed_assertions/$total_assertions $failed_tests/$total_tests"
+	else
+		result="1 $failed_assertions/$total_assertions $failed_tests/$total_tests"
+	fi
+else
+	buffer=$(get_nth_last_line 2 "$log_file" | tr '()' '  ')
+	total_assertions=$(echo "$buffer" | get_nth_word 4) || panic
+	total_tests=$(echo "$buffer" | get_nth_word 7) || panic
+	#echo "BUFFER $buffer"
+	result="1 0/$total_assertions 0/$total_tests"
+fi
+
+cat "$log_file"
+echo "STATUS $status"
+echo "RESULT $result"
+
+if [ "$result" -ne 0 ]; then
+	echo "$result" > "$result_file" || panic
+fi
+
+if [ "$status" -ne 0 ]; then
+	exit 1
+else
+	exit 0
+fi

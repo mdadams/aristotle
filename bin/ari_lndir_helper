@@ -1,0 +1,89 @@
+#! /usr/bin/env bash
+
+panic()
+{
+	echo "ERROR: $@"
+	exit 1
+}
+
+verbose=0
+show_only=0
+src_root_dir=
+dst_root_dir=
+cur_dir=
+delta=
+
+while getopts nvs:d:c:e: option; do
+	case "$option" in
+	n)
+		show_only=1;;
+	v)
+		verbose=$((verbose + 1));;
+	s)
+		src_root_dir="$OPTARG";;
+	d)
+		dst_root_dir="$OPTARG";;
+	c)
+		cur_dir="$OPTARG";;
+	e)
+		delta="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$src_root_dir" ]; then
+	panic "source root directory not specified"
+fi
+if [ -z "$dst_root_dir" ]; then
+	panic "destination root directory not specified"
+fi
+#if [ -z "$cur_dir" ]; then
+#	panic "current directory not specified"
+#fi
+#if [ -z "$delta" ]; then
+#	panic "delta not specified"
+#fi
+
+if [ ! -d "$src_root_dir" ]; then
+	panic "source is not a directory $src_root_dir"
+fi
+if [ ! -d "$dst_root_dir" ]; then
+	panic "destination is not a directory $dst_root_dir"
+fi
+
+for path in $(ls -af "$src_root_dir/$cur_dir"); do
+	if [ "$path" = . -o "$path" = .. ]; then
+		continue
+	fi
+	if [ -d "${src_root_dir}/${cur_dir}/$path" ]; then
+		if [ "$show_only" -eq 0 ]; then
+			mkdir "${dst_root_dir}/${cur_dir}/$path" || panic
+		else
+			echo "current directory $(pwd)"
+			echo "mkdir ${dst_root_dir}/${cur_dir}/$path"
+		fi
+		options=()
+		if [ "$show_only" -ne 0 ]; then
+			options+=(-n)
+		fi
+		"$0" "${options[@]}" -s "$src_root_dir" -d "$dst_root_dir" -c "${cur_dir}/$path" -e "${delta}../"
+	else
+		case "$src_root_dir" in
+		/*)
+			src_path="${src_root_dir}/${cur_dir}/$path"
+			;;
+		*)
+			src_path="${delta}${src_root_dir}/${cur_dir}/$path"
+			;;
+		esac
+		dst_path="${dst_root_dir}/${cur_dir}/$path"
+		if [ "$show_only" -eq 0 ]; then
+			ln -s "$src_path" "$dst_path" || panic
+		else
+			echo "current directory $(pwd)"
+			echo "ln -s $src_path $dst_path"
+		fi
+	fi
+done
