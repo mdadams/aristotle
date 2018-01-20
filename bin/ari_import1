@@ -201,9 +201,16 @@ git)
 	(chdir "$dist_dir" && git checkout "$in_subtype" >& /dev/null) || \
 	  panic "cannot checkout branch/tag $in_subtype in repository $in_source"
 
-	# Remove the Git repository directory.
-	rm -rf "$dist_dir/.git" || \
-	  panic "cannot remove git repository directory"
+	# Remove any Git repository directories.
+	find "$dist_dir" \
+	  -type d -a -name .git -prune -exec rm -rf {} \; ||
+	  panic "cannot remove Git repository directories"
+
+	# Remove any special Git files (e.g., .gitignore and .gitattributes).
+	find "$dist_dir" \
+	  -type f -a \( -name .gitignore -o -name .gitattributes \) \
+	  -exec rm -f {} \; || \
+	  panic "cannot remove Git files (e.g., .gitignore and .gitattributes)"
 	;;
 
 directory|dir)

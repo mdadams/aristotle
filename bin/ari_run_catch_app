@@ -24,7 +24,7 @@ get_nth_word()
 	if [ $# -ne 1 ]; then
 		return 1
 	fi
-	awk -v n="$1" '{print $n;}' -
+	awk -v n="$1" '{if (n <= NF) {print $n;} else {exit 1;}}' -
 }
 
 cmd_dir=$(dirname "$0") || exit 1
