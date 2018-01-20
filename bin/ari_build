@@ -170,7 +170,7 @@ for package in "${packages[@]}"; do
 	configure_log_file="$configure_dir/log"
 	configure_time_file="$configure_dir/time"
 
-	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+	optional=$("$ari_info" -a "$project" "package-$package/optional") || \
 	  panic "cannot get optional"
 
 	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
@@ -203,7 +203,23 @@ for package in "${packages[@]}"; do
 		;;
 	esac
 
-	targets=($("$ari_info" -a "$project" package-"$package"/builds)) || \
+	saved_ifs="$IFS"
+	IFS=$'\ca'
+	configure_env=($( \
+	  ARI_BIN_DIR="$cmd_dir" \
+	  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+	  ARI_SOURCE_DIR="$source_dir" \
+	  ARI_DERIVED_DIR="$derived_dir" \
+	  ARI_INSTALL_DIR="$install_dir" \
+	  "$ari_info" \
+	  -a "$project" -e -d "$IFS" package-"$package"/configure_env))
+	status=$?
+	IFS="$saved_ifs"
+	if [ "$status" -ne 0 ]; then
+		panic "cannot get configure environment"
+	fi
+
+	targets=($("$ari_info" -a "$project" "package-$package/builds")) || \
 	  panic "cannot get build targets"
 
 	if [ "$force_clean" -ne 0 ]; then
@@ -262,12 +278,12 @@ for package in "${packages[@]}"; do
 
 		cmake)
 			out_of_source_build=$("$ari_info" \
-			  -a "$project" package-"$package"/out_of_source_build) || \
+			  -a "$project" "package-$package/out_of_source_build") || \
 			  panic "cannot get out_of_source_build property"
 			configure_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
 			if [ "$out_of_source_build" -ne 0 ]; then
-				(cmake \
+				(env "${configure_env[@]}" cmake \
 				  -H"$source_dir" \
 				  -B"$derived_dir" \
 				  -DCMAKE_INSTALL_PREFIX="$install_dir" \
@@ -279,7 +295,7 @@ for package in "${packages[@]}"; do
 				  panic "cannot make link tree"
 				configure_status=0
 				if [ "$configure_status" -eq 0 ]; then
-					(cmake \
+					(env "${configure_env[@]}" cmake \
 					  -H"$derived_dir" \
 					  -B"$derived_dir" \
 					  -DCMAKE_INSTALL_PREFIX="$install_dir" \
@@ -318,9 +334,8 @@ for package in "${packages[@]}"; do
 			  ARI_SOURCE_DIR="$source_dir" \
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
-			  "$ari_info" \
-			  -a "$project" -e -d "$IFS" \
-			  package-"$package"/configure))
+			  "$ari_info" -a "$project" -e -d "$IFS" \
+			  "package-$package/configure"))
 			status=$?
 			IFS="$saved_ifs"
 			if [ "$status" -ne 0 ]; then
@@ -333,6 +348,7 @@ for package in "${packages[@]}"; do
 			  ARI_SOURCE_DIR="$source_dir" \
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
+			  env "${configure_env[@]}" \
 			  "${configure_program[@]}" < /dev/null |& \
 			  "$ari_tee" "${tee_opts[@]}" "$configure_log_file"
 			configure_status=${PIPESTATUS[0]}
@@ -393,7 +409,7 @@ for package in "${packages[@]}"; do
 		fi
 
 		dependencies=($("$ari_info" \
-		  -a "$project" package-"$package"/build-$target/depends_on)) || \
+		  -a "$project" "package-$package/build-$target/depends_on")) || \
 		  panic "cannot get dependencies"
 		missing_dependencies=0
 		for dependency in "${dependencies[@]}"; do
@@ -417,6 +433,24 @@ for package in "${packages[@]}"; do
 		fi
 
 
+		saved_ifs="$IFS"
+		IFS=$'\ca'
+		build_env=($( \
+		  ARI_BIN_DIR="$cmd_dir" \
+		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+		  ARI_SOURCE_DIR="$source_dir" \
+		  ARI_DERIVED_DIR="$derived_dir" \
+		  ARI_INSTALL_DIR="$install_dir" \
+		  ARI_BUILD_TARGET="$target" \
+		  "$ari_info" \
+		  -a "$project" -e -d "$IFS" \
+		  "package-$package/build-$target/build_env"))
+		status=$?
+		IFS="$saved_ifs"
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get build environment"
+		fi
+
 		case "$build_tool" in
 
 		cmake)
@@ -426,7 +460,7 @@ for package in "${packages[@]}"; do
 			fi
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			cmake \
+			env "${build_env[@]}" cmake \
 			  --build "$derived_dir" \
 			  "${cmake_opts[@]}" |& \
 			  "$ari_tee" "${tee_opts[@]}" \
@@ -439,7 +473,7 @@ for package in "${packages[@]}"; do
 		make)
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			(chdir "$derived_dir" && make "$target") |& \
+			(chdir "$derived_dir" && env "${build_env[@]}" make "$target") |& \
 			  "$ari_tee" "${tee_opts[@]}" \
 			  "$build_log_file"
 			build_status=${PIPESTATUS[0]}
@@ -458,7 +492,7 @@ for package in "${packages[@]}"; do
 			  ARI_INSTALL_DIR="$install_dir" \
 			  "$ari_info" \
 			  -a "$project" -e -d "$IFS" \
-			  package-"$package"/build))
+			  "package-$package/build"))
 			status=$?
 			IFS="$saved_ifs"
 			if [ "$status" -ne 0 ]; then
@@ -472,6 +506,7 @@ for package in "${packages[@]}"; do
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
 			  ARI_BUILD_TARGET="$target" \
+			  env "${build_env[@]}" \
 			  "${build_program[@]}" < /dev/null |& \
 			  "$ari_tee" "${tee_opts[@]}" "$build_log_file"
 			build_status=${PIPESTATUS[0]}
@@ -497,7 +532,7 @@ for package in "${packages[@]}"; do
 		  panic "cannot get build log length"
 
 		executable_files=($("$ari_info" -a "$project" \
-		  package-"$package"/build-"$target"/executables)) || \
+		  "package-$package/build-$target/executables")) || \
 		  panic "cannot get executables"
 		for file in "${executable_files[@]}"; do
 			target_file="$derived_dir/$file"

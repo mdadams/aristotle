@@ -150,6 +150,10 @@ The following are properties of a package within an assignment:
     Note: This property only needs to be specified if a user-specified
     build tool is being employed.
 
+    configure_env
+    Specify any environment variables that should be set for the
+    configuration command.
+
     build
     Specify the command to be used for building code in the case
     that a user-specified build tool is being employed.
@@ -188,6 +192,10 @@ The following are properties of a build target within a package:
     Valid values: 0 (false) or 1 (true)
     Default value: 0
 
+    build_env
+    Specify any environment variables that should be set for the
+    build command.
+
 The following are properties of a test target within a package:
 
     name
@@ -220,6 +228,10 @@ The following are properties of a test target within a package:
     manually-performed test.
     Valid values: 0 (false) or 1 (true)
     Default value: 0
+
+    test_env
+    Specify any environment variables that should be set for the
+    test program.
 
 
 Variables in Assignment-Definition Files

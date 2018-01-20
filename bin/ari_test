@@ -139,7 +139,7 @@ for package in "${packages[@]}"; do
 	configure_status_file="$configure_dir/status"
 	configure_log_file="$configure_dir/log"
 
-	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
+	optional=$("$ari_info" -a "$project" "package-$package/optional") || \
 	  panic "cannot get optional"
 
 	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
@@ -156,20 +156,20 @@ for package in "${packages[@]}"; do
 		panic "missing package $package"
 	fi
 
-	targets=($("$ari_info" -a "$project" package-"$package"/tests)) || \
+	targets=($("$ari_info" -a "$project" "package-$package/tests")) || \
 	  panic "cannot get test targets"
 
 	for target in "${targets[@]}"; do
 
 		optional=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/optional)) || \
+		  -a "$project" "package-$package/test-$target/optional")) || \
 		  panic "cannot get test targets"
 		if [ "$skip_optional" -ne 0 -a "$optional" -ne 0 ]; then
 			continue
 		fi
 
 		dependencies=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/depends_on)) || \
+		  -a "$project" "package-$package/test-$target/depends_on")) || \
 		  panic "cannot get dependencies"
 		missing_dependency=0
 		for dependency in "${dependencies[@]}"; do
@@ -211,12 +211,29 @@ for package in "${packages[@]}"; do
 		fi
 
 		manual=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/manual)) || \
+		  -a "$project" "package-$package/test-$target/manual")) || \
 		  panic "cannot get manual property"
 		if [ "$manual" -ne 0 ]; then
 			print_status "$reproducible" "$package" "test" "$target" \
 			  "M" "" "" ""
 			continue
+		fi
+
+		saved_ifs="$IFS"
+		IFS=$'\ca'
+		test_env=($( \
+		  ARI_BIN_DIR="$cmd_dir" \
+		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+		  ARI_SOURCE_DIR="$source_dir" \
+		  ARI_DERIVED_DIR="$derived_dir" \
+		  ARI_INSTALL_DIR="$install_dir" \
+		  ARI_TEST_RESULT_FILE="$test_result_file" \
+		  "$ari_info" \
+		  -a "$project" -e -d "$IFS" "package-$package/test-$target/test_env"))
+		status=$?
+		IFS="$saved_ifs"
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get test environment"
 		fi
 
 		saved_ifs="$IFS"
@@ -227,16 +244,16 @@ for package in "${packages[@]}"; do
 		  ARI_SOURCE_DIR="$source_dir" \
 		  ARI_DERIVED_DIR="$derived_dir" \
 		  ARI_INSTALL_DIR="$install_dir" \
-		  "$ari_info" \
+		  env "${test_env[@]}" "$ari_info" \
 		  -a "$project" -e -d "$IFS" \
-		  package-"$package"/test-"$target"/test))
+		  "package-$package/test-$target/test"))
 		status=$?
 		IFS="$saved_ifs"
 		if [ "$status" -ne 0 ]; then
 			panic "cannot get test program"
 		fi
 		test_timeout=($("$ari_info" \
-		  -a "$project" package-"$package"/test-"$target"/timeout)) || \
+		  -a "$project" "package-$package/test-$target/timeout")) || \
 		  panic "cannot get test timeout"
 
 		if [ ! -x "${test_program[0]}" ]; then
