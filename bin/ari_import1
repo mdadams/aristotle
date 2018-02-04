@@ -123,6 +123,7 @@ fi
 dist_dir="$project_dir/distribution"
 signature_file="$project_dir/.aristotle"
 submission_source_file="$project_dir/submission_source"
+commit_history_file="$project_dir/commit_history"
 
 mkdir -p "$project_dir" || panic "cannot make directory $project_dir"
 
@@ -200,6 +201,10 @@ git)
 	# Checkout the desired branch/tag.
 	(chdir "$dist_dir" && git checkout "$in_subtype" >& /dev/null) || \
 	  panic "cannot checkout branch/tag $in_subtype in repository $in_source"
+
+	# Get the commit history.
+	git -C "$dist_dir" log "$in_subtype" > "$commit_history_file" || \
+	  panic "cannot get commit history"
 
 	# Remove any Git repository directories.
 	find "$dist_dir" \

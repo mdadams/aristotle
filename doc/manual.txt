@@ -275,6 +275,9 @@ The following variables are available:
     The directory that contains the original assignment submission exactly
     as it was provided at the time of import.
 
+    ARI_COMMIT_HISTORY_FILE
+    The name of the commit history file (if one exists).
+
 
 Identification
 ==============

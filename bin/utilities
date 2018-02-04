@@ -79,6 +79,19 @@ count_lines()
 	cat "$1" | awk 'END {print NR;}' -
 }
 
+is_absolute_pathname()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	local path="$1"
+	if [[ "$path" = /* ]]; then
+		echo 1
+	else
+		echo 0
+	fi
+}
+
 pathname_relative_to()
 {
 	if [ $# -ne 2 ]; then

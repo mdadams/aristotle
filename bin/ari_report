@@ -179,6 +179,9 @@ if [ -z "$project_dir" ]; then
 	panic "no project directory"
 fi
 
+abs_project_dir=$(absolute_pathname "$project_dir") || \
+  panic "cannot get absolute path"
+
 project=$(cat "$project_dir/assignment_id") || \
   panic "cannot get assignment ID"
 
@@ -204,11 +207,23 @@ student_email=$(cat "$project_dir/student_email") || \
 section=$(cat "$project_dir/section") || \
   panic "cannot get section"
 
+# Note: An absolute path is needed since relative paths are interpreted
+# relative to the distibution directory.
+commit_history_file="$abs_project_dir/commit_history"
+
 summary_file="$tmp_dir/summary"
 summary_1_file="$tmp_dir/summary_1"
 summary_2_file="$tmp_dir/summary_2"
 
-report_files=($("$ari_info" -a "$project" report_files)) || \
+#report_files=($("$ari_info" -a "$project" report_files)) || \
+#  panic "cannot get report files"
+report_files_env=()
+if [ -f "$commit_history_file" ]; then
+	report_files_env+=("ARI_COMMIT_HISTORY_FILE=$commit_history_file")
+fi
+report_files=($( \
+  env "${report_files_env[@]}" \
+  "$ari_info" -a "$project" -e report_files)) || \
   panic "cannot get report files"
 
 rm -f "$summary_file" "$summary_1_file" "$summary_2_file"
@@ -452,7 +467,13 @@ done
 
 file_list=("${report_files[@]}")
 for file in "${file_list[@]}"; do
-	target_file="$dist_dir/$file"
+	abs_path_flag=$(is_absolute_pathname "$file") || \
+	  panic "test for absolute pathname failed"
+	if [ "$abs_path_flag" -ne 0 ]; then
+		target_file="$file"
+	else
+		target_file="$dist_dir/$file"
+	fi
 	if [ -f "$target_file" ]; then
 		upness=1
 		topdf_other_opts+=(-u "$upness" -l -i "$target_file")
