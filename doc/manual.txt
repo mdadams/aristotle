@@ -154,6 +154,10 @@ The following are properties of a package within an assignment:
     Specify any environment variables that should be set for the
     configuration command.
 
+    configure_options
+    Specify any extra options that should be specified for the
+    configuration command.
+
     build
     Specify the command to be used for building code in the case
     that a user-specified build tool is being employed.

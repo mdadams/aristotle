@@ -219,6 +219,22 @@ for package in "${packages[@]}"; do
 		panic "cannot get configure environment"
 	fi
 
+	saved_ifs="$IFS"
+	IFS=$'\ca'
+	configure_options=($( \
+	  ARI_BIN_DIR="$cmd_dir" \
+	  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+	  ARI_SOURCE_DIR="$source_dir" \
+	  ARI_DERIVED_DIR="$derived_dir" \
+	  ARI_INSTALL_DIR="$install_dir" \
+	  "$ari_info" \
+	  -a "$project" -e -d "$IFS" package-"$package"/configure_options))
+	status=$?
+	IFS="$saved_ifs"
+	if [ "$status" -ne 0 ]; then
+		panic "cannot get configure options"
+	fi
+
 	targets=($("$ari_info" -a "$project" "package-$package/builds")) || \
 	  panic "cannot get build targets"
 
@@ -287,6 +303,7 @@ for package in "${packages[@]}"; do
 				  -H"$source_dir" \
 				  -B"$derived_dir" \
 				  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+				  "${configure_options[@]}" \
 				  ) |& "$ari_tee" "${tee_opts[@]}" \
 				 "$configure_log_file"
 				configure_status=${PIPESTATUS[0]}
@@ -299,6 +316,7 @@ for package in "${packages[@]}"; do
 					  -H"$derived_dir" \
 					  -B"$derived_dir" \
 					  -DCMAKE_INSTALL_PREFIX="$install_dir" \
+					  "${configure_options[@]}" \
 					  ) |& "$ari_tee" "${tee_opts[@]}" \
 					 "$configure_log_file"
 					configure_status=${PIPESTATUS[0]}
@@ -349,7 +367,9 @@ for package in "${packages[@]}"; do
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
 			  env "${configure_env[@]}" \
-			  "${configure_program[@]}" < /dev/null |& \
+			  "${configure_program[@]}" \
+			  "${configure_options[@]}" \
+			  < /dev/null |& \
 			  "$ari_tee" "${tee_opts[@]}" "$configure_log_file"
 			configure_status=${PIPESTATUS[0]}
 			configure_end_time=$(time_since_epoch) || \
