@@ -2,7 +2,21 @@
 
 usage()
 {
-	echo "bad usage: $@"
+	echo "$@"
+	cat <<- EOF
+	usage:
+	$0 [options]
+
+	options:
+	-c \$command
+	    Set the program to run to \$command.
+	-t \$timeout
+	    Set the timeout to \$timeout.
+	-r
+	    Enable the saving of the results.
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+	EOF
 	exit 2
 }
 
@@ -41,7 +55,7 @@ result=0
 result_file="$ARI_TEST_RESULT_FILE"
 timeout=
 
-while getopts D:c:rt: opt; do
+while getopts D:c:rt:f: opt; do
 	case $opt in
 	c)
 		command="$OPTARG";;
@@ -49,6 +63,8 @@ while getopts D:c:rt: opt; do
 		timeout="$OPTARG";;
 	r)
 		result=1;;
+	f)
+		result=1; result_file="$OPTARG";;
 	D)
 		debug_level="$OPTARG";;
 	\?)
@@ -64,10 +80,15 @@ if [ "$result" -ne 0 ]; then
 	fi
 fi
 
+if [ -z "$command" ]; then
+	panic "no command specified"
+fi
+
 mkdir -p "$tmp_dir" || panic "cannot make directory $tmp_dir"
 
 if [ -n "$timeout" ]; then
-	"$ari_timeout" -t "$timeout" -k 10 "$command" -r console > "$log_file" 2> /dev/null
+	"$ari_timeout" -t "$timeout" -k 10 "$command" -r console \
+	  > "$log_file" 2> /dev/null
 	status=$?
 else
 	"$command" -r console > "$log_file" 2> /dev/null

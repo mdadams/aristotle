@@ -116,7 +116,7 @@ for dir in bin etc; do
 	tree_copy "$cmd_dir/$dir" "$target_dir" || panic
 done
 
-target_file="$install_dir/etc/assignments_default"
+target_file="$install_dir/etc/default_assignments"
 if [ ! \( -L "$target_file" -o -e "$target_file" \) ]; then
 	if [ -z "$assignments_dir" ]; then
 		assignments_dir="assignments"
