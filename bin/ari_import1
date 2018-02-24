@@ -203,7 +203,7 @@ git)
 	  panic "cannot checkout branch/tag $in_subtype in repository $in_source"
 
 	# Get the commit history.
-	git -C "$dist_dir" log "$in_subtype" > "$commit_history_file" || \
+	(chdir "$dist_dir" && git log "$in_subtype") > "$commit_history_file" || \
 	  panic "cannot get commit history"
 
 	# Remove any Git repository directories.

@@ -213,6 +213,14 @@ while true; do
 	fi
 	(chdir "$normal_dir" && \
 	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git config --local push.default simple)
+	if [ $? -ne 0 ]; then
+		command_status=1
+		perror "cannot set push.default"
+		break
+	fi
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
 	  git push)
 	if [ $? -ne 0 ]; then
 		command_status=1
