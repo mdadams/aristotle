@@ -1,5 +1,8 @@
 #! /usr/bin/env bash
 
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
 usage()
 {
 	echo "$@"
@@ -41,7 +44,6 @@ get_nth_word()
 	awk -v n="$1" '{if (n <= NF) {print $n;} else {exit 1;}}' -
 }
 
-cmd_dir=$(dirname "$0") || exit 1
 ari_timeout="$cmd_dir/ari_timeout"
 
 user="$whoami"
@@ -97,42 +99,76 @@ fi
 
 completed=1
 if [ "$status" -ne 0 ]; then
+	# If any tests fail, the output should resemble:
+	# test cases:  6 |  5 passed | 1 failed
+	# assertions: 84 | 80 passed | 4 failed
+	# [blank line]
 	if [ "$status" -ge 128 ]; then
 		completed=0
 	fi
-	buffer=$(get_nth_last_line 3 "$log_file")
-	total_tests=$(echo "$buffer" | get_nth_word 3) || \
-	  panic "cannot get total tests"
-	passed_tests=$(echo "$buffer" | get_nth_word 5) || \
-	  panic "cannot get passed tests"
-	failed_tests=$(echo "$buffer" | get_nth_word 8) || \
-	  panic "cannot get failed tests"
-	buffer=$(get_nth_last_line 2 "$log_file")
-	total_assertions=$(echo "$buffer" | get_nth_word 2) || \
-	  panic "cannot get total assertions"
-	passed_assertions=$(echo "$buffer" | get_nth_word 4) || \
-	  panic "cannot get passed assertions"
-	failed_assertions=$(echo "$buffer" | get_nth_word 7) || \
-	  panic "cannot get failed assertions"
-
-	#eecho "total tests $total_tests"
-	#eecho "passed tests $passed_tests"
-	#eecho "failed tests $failed_tests"
-	#eecho "total assertions $total_assertions"
-	#eecho "passed assertions $passed_assertions"
-	#eecho "failed assertions $failed_assertions"
-	if [ "$completed" -eq 0 ]; then
+	test_cases_buffer=$(get_nth_last_line 3 "$log_file") || \
+	  panic "cannot get test cases line"
+	assertions_buffer=$(get_nth_last_line 2 "$log_file") || \
+	  panic "cannot get assertions line"
+	valid_result=1
+	echo "$test_cases_buffer" | grep -q \
+	  -e '^test cases:[[:space:]]\+[0-9]*[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+passed[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+failed$' || \
+	  valid_result=0
+	echo "$assertions_buffer" | grep -q \
+	  -e '^assertions:[[:space:]]\+[0-9]*[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+passed[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+failed$' || \
+	  valid_result=0
+	if [ "$valid_result" -ne 0 ]; then
+		total_tests=$(echo "$test_cases_buffer" | get_nth_word 3) || \
+		  panic "cannot get total tests"
+		passed_tests=$(echo "$test_cases_buffer" | get_nth_word 5) || \
+		  panic "cannot get passed tests"
+		failed_tests=$(echo "$test_cases_buffer" | get_nth_word 8) || \
+		  panic "cannot get failed tests"
+		total_assertions=$(echo "$assertions_buffer" | get_nth_word 2) || \
+		  panic "cannot get total assertions"
+		passed_assertions=$(echo "$assertions_buffer" | get_nth_word 4) || \
+		  panic "cannot get passed assertions"
+		failed_assertions=$(echo "$assertions_buffer" | get_nth_word 7) || \
+		  panic "cannot get failed assertions"
+	else
+		total_tests="?"
+		passed_tests="?"
+		failed_tests="?"
+		total_assertions="?"
+		passed_assertions="?"
+		failed_assertions="?"
+	fi
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "total tests $total_tests"
+		eecho "passed tests $passed_tests"
+		eecho "failed tests $failed_tests"
+		eecho "total assertions $total_assertions"
+		eecho "passed assertions $passed_assertions"
+		eecho "failed assertions $failed_assertions"
+	fi
+	if [ "$completed" -eq 1 ]; then
 		result_message="FAIL,$failed_assertions/$total_assertions,$failed_tests/$total_tests"
 	else
 		result_message="INC,$failed_assertions/$total_assertions,$failed_tests/$total_tests"
 	fi
 else
-	buffer=$(get_nth_last_line 2 "$log_file" | tr '()' '  ')
-	total_assertions=$(echo "$buffer" | get_nth_word 4) || \
-	  panic "cannot get total assertions"
-	total_tests=$(echo "$buffer" | get_nth_word 7) || \
-	  panic "cannot get total tests"
-	result_message="PASS,0/$total_assertions,0/$total_tests"
+	# If all tests pass, then the output should resemble:
+	# All tests passed (723 assertions in 22 test cases)
+	# [blank line]
+	buffer=$(get_nth_last_line 2 "$log_file") || \
+	  panic "cannot get status line"
+	valid_result=1
+	echo "$buffer" | grep -q \
+	  -e '^All tests passed ([0-9]*[[:space:]]\+assertions in[[:space:]]\+[0-9]*[[:space:]]\+test cases)$' || \
+	  valid_result=0
+	if [ "$valid_result" -ne 0 ]; then
+		buffer=$(echo "$buffer" | tr '()' '  ')
+		total_assertions=$(echo "$buffer" | get_nth_word 4) || \
+		  panic "cannot get total assertions"
+		total_tests=$(echo "$buffer" | get_nth_word 7) || \
+		  panic "cannot get total tests"
+		result_message="PASS,0/$total_assertions,0/$total_tests"
+	fi
 fi
 
 if [ "$result" -ne 0 ]; then
@@ -149,9 +185,9 @@ if [ "$status" -ne 0 ]; then
 		completed_message="incomplete"
 	fi
 	cat <<- EOF
-	failed assertions: $failed_assertions/$total_assertions ($complete)"
-	failed tests: $failed_tests/$total_tests ($complete)"
-	status: fail ($completed_message)"
+	failed assertions: $failed_assertions/$total_assertions ($completed_message)
+	failed tests: $failed_tests/$total_tests ($completed_message)
+	status: fail ($completed_message)
 	EOF
 else
 	cat <<- EOF
