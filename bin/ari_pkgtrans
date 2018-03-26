@@ -37,6 +37,10 @@ usage()
 	$0
 	usage: $0 [options]
 	options:
+	-n
+	    Show the operations that would be performed.
+	-v
+	    Increase verbosity level of output.
 	EOF
 	exit 2
 }
@@ -70,6 +74,7 @@ get_nth_word_special()
 ari_lndir="$cmd_dir/ari_lndir"
 
 show_only=0
+#verbose=1
 verbose=0
 
 while getopts nv option; do
@@ -93,6 +98,7 @@ while [ $# -gt 0 ]; do
 	shift 1
 
 	case "$command" in
+
 	cur_dir)
 		if [ $# -lt 1 ]; then
 			panic "no directory specified"
@@ -100,10 +106,15 @@ while [ $# -gt 0 ]; do
 		dir="$1"
 		shift 1
 		if [ ! -d "$dir" ]; then
-			panic "directory does not exist $dir"
+			if [ "$show_only" -eq 0 ]; then
+				panic "directory does not exist $dir"
+			else
+				eecho "warning: directory does not exist $dir"
+			fi
 		fi
 		cur_dir="$dir"
 		;;
+
 	src_dir)
 		if [ $# -lt 1 ]; then
 			panic "no directory specified"
@@ -111,10 +122,15 @@ while [ $# -gt 0 ]; do
 		dir="$1"
 		shift 1
 		if [ ! -d "$dir" ]; then
-			panic "directory does not exist $dir"
+			if [ "$show_only" -eq 0 ]; then
+				panic "directory does not exist $dir"
+			else
+				eecho "warning: directory does not exist $dir"
+			fi
 		fi
 		src_dir="$dir"
 		;;
+
 	lndir)
 		if [ $# -lt 1 ]; then
 			panic "no directory specified"
@@ -124,12 +140,14 @@ while [ $# -gt 0 ]; do
 		if [ -z "$cur_dir" ]; then
 			panic "current directory not set"
 		fi
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "cd $cur_dir && $ari_lndir $dir"
+		fi
 		if [ "$show_only" -eq 0 ]; then
 			(cd "$cur_dir" && "$ari_lndir" "$dir") || panic
-		else
-			echo "cd $cur_dir && $ari_lndir $dir"
 		fi
 		;;
+
 	replace)
 		if [ $# -lt 1 ]; then
 			panic "no source/destination file specified"
@@ -145,6 +163,9 @@ while [ $# -gt 0 ]; do
 		dst=$(get_nth_word_special 2 "$spec") || panic
 		src_path="$src_dir/$src"
 		dst_path="$cur_dir/$dst"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "copying $src_path over $dst_path"
+		fi
 		if [ "$show_only" -eq 0 ]; then
 			if [ ! -L "$dst_path" -a ! -f "$dst_path" ]; then
 				panic "file to be replaced does not exist $dst_path"
@@ -153,11 +174,10 @@ while [ $# -gt 0 ]; do
 			  panic "cannot remove file to be replaced $dst_path"
 			cp "$src_path" "$dst_path" || \
 			  panic "cannot copy file $src_path to $dst_path"
-		else
-			echo "copying $src_path over $dst_path"
 		fi
 		shift 1
 		;;
+
 	copy)
 		if [ $# -lt 1 ]; then
 			panic
@@ -174,12 +194,14 @@ while [ $# -gt 0 ]; do
 		dst=$(get_nth_word_special 2 "$spec") || panic
 		src_path="$src_dir/$src"
 		dst_path="$cur_dir/$dst"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "copying $src_path to $dst_path"
+		fi
 		if [ "$show_only" -eq 0 ]; then
 			cp "$src_path" "$dst_path" || panic "cannot copy file"
-		else
-			echo "copying $src_path to $dst_path"
 		fi
 		;;
+
 	remove)
 		if [ $# -lt 1 ]; then
 			panic "no file specified"
@@ -191,15 +213,17 @@ while [ $# -gt 0 ]; do
 		shift 1
 		path=$(get_nth_word 1 "$spec") || panic
 		target_path="$cur_dir/$path"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "removing $target_path"
+		fi
 		if [ "$show_only" -eq 0 ]; then
 			if [ ! -L "$target_path" -a ! -f "$target_path" ]; then
 				panic "file to be deleted does not exist"
 			fi
 			rm -f "$target_path" || panic "cannot remove file"
-		else
-			echo "removing $target_path"
 		fi
 		;;
+
 	symlink)
 		if [ $# -lt 1 ]; then
 			panic
@@ -216,14 +240,96 @@ while [ $# -gt 0 ]; do
 		dst=$(get_nth_word_special 2 "$spec") || panic
 		src_path="$src_dir/$src"
 		dst_path="$cur_dir/$dst"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "linking $src_path to $dst_path"
+		fi
 		if [ "$show_only" -eq 0 ]; then
 			ln -s "$src_path" "$dst_path" || panic "cannot create symlink"
-		else
-			echo "linking $src_path to $dst_path"
 		fi
 		;;
-	*)
+
+	append)
+		if [ $# -lt 2 ]; then
+			panic
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		src="$1"
+		dst="$2"
+		shift 2
+		src_path="$src_dir/$src"
+		dst_path="$cur_dir/$dst"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "appending $src_path to $dst_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			cat "$src_path" >> "$dst_path" || \
+			  panic "cannot append file"
+		fi
 		;;
+
+	cat)
+		if [ $# -lt 2 ]; then
+			panic
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		src_specs="$1"
+		dst_spec="$2"
+		shift 2
+		src_paths=()
+		num_src_specs=$(get_num_words "$src_specs") || panic
+		i=0
+		while [ "$i" -lt "$num_src_specs" ]; do
+			src_spec=$(get_nth_word "$((i + 1))" "$src_specs") || panic
+			src_paths+=("$src_dir/$src_spec")
+			i=$((i + 1))
+		done
+		dst_path="$cur_dir/$dst_spec"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "concatenating ${src_paths[@]} to $dst_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			cat "${src_paths[@]}" > "$dst_path" || \
+			  panic "cannot concatenate file"
+		fi
+		;;
+
+	breaklink)
+		if [ $# -lt 1 ]; then
+			panic "no file specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		path="$1"
+		shift 1
+		target_path="$cur_dir/$path"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "breaklink $target_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			if [ ! -L "$target_path" ]; then
+				panic "not a symbolic link $target_path"
+			fi
+			ref_path=$(readlink -f "$target_path") || \
+			  panic "nonexistent target for symlink $target_path"
+			rm -f "$target_path" || panic "cannot remove symlink $target_path"
+			cp "$ref_path" "$target_path" || panic "cannot copy from $ref_path to $target_path"
+		fi
+		;;
+
+	*)
+		panic "unknown command";;
+
 	esac
 
 done

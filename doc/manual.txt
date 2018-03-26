@@ -182,6 +182,10 @@ The following are properties of a build target within a package:
     The name or a short description of the build target.
     Default value: The build target ID.
 
+    targets
+    The targets to be specified to the build tool.
+    Default value: The build target ID.
+
     executables
     The executable files (if any) produced by building the build target.
     Default value: The build target ID.

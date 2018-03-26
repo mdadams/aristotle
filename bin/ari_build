@@ -452,6 +452,23 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 
+		saved_ifs="$IFS"
+		IFS=$'\ca'
+		real_targets=($( \
+		  ARI_BIN_DIR="$cmd_dir" \
+		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+		  ARI_SOURCE_DIR="$source_dir" \
+		  ARI_DERIVED_DIR="$derived_dir" \
+		  ARI_INSTALL_DIR="$install_dir" \
+		  ARI_BUILD_TARGET="$target" \
+		  "$ari_info" \
+		  -a "$project" -e -d "$IFS" \
+		  "package-$package/build-$target/targets"))
+		status=$?
+		IFS="$saved_ifs"
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get real build targets"
+		fi
 
 		saved_ifs="$IFS"
 		IFS=$'\ca'
@@ -474,18 +491,30 @@ for package in "${packages[@]}"; do
 		case "$build_tool" in
 
 		cmake)
-			cmake_opts=()
-			if [ "$target" != all ]; then
-				cmake_opts+=(--target "$target")
+			if [ -e "$build_log_file" ]; then
+				rm -f "$build_log_file" || \
+				  panic "cannot remove $build_log_file"
 			fi
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			env "${build_env[@]}" cmake \
-			  --build "$derived_dir" \
-			  "${cmake_opts[@]}" |& \
-			  "$ari_tee" "${tee_opts[@]}" \
-			  "$build_log_file"
-			build_status=${PIPESTATUS[0]}
+			if [ "${#real_targets[@]}" -eq 0 ]; then
+				real_targets=(all)
+			fi
+			for real_target in "${real_targets[@]}"; do
+				cmake_opts=()
+				if [ "$target" != all ]; then
+					cmake_opts+=(--target "$real_target")
+				fi
+				env "${build_env[@]}" cmake \
+				  --build "$derived_dir" \
+				  "${cmake_opts[@]}" |& \
+				  "$ari_tee" -a "${tee_opts[@]}" \
+				  "$build_log_file"
+				build_status=${PIPESTATUS[0]}
+				if [ "$build_status" -ne 0 ]; then
+					break
+				fi
+			done
 			build_end_time=$(time_since_epoch) || \
 			  panic "cannot get end time"
 			;;

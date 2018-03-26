@@ -42,16 +42,21 @@ usage()
 	    Set the debug level to debug_level.
 	-c
 	    Enable the copying of the input data to standard output.
+	-a
+	    Append to the specified file (instead of first truncating).
 	EOF
 	exit 2
 }
 
 debug_level=${ARI_DEBUG_LEVEL:-0}
 copy=0
-while getopts cD: option; do
+append=0
+while getopts acD: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
+	a)
+		append=1;;
 	c)
 		copy=1;;
 	*)
@@ -67,7 +72,11 @@ fi
 if [ $# -eq 1 ]; then
 	file="$1"
 	if [ "$copy" -ne 0 ]; then
-		tee "$file"
+		tee_options=()
+		if [ "$append" -ne 0 ]; then
+			tee_options+=(-a)
+		fi
+		tee "${tee_options[@]}" "$file"
 	else
 		cat > "$file"
 	fi
