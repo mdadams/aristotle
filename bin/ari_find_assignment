@@ -1,0 +1,72 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2018 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+ari_top_dir="$cmd_dir/.."
+ari_assignment_path="${ARI_ASSIGNMENT_PATH:-$ari_top_dir/../aristotle_local/etc:$ari_top_dir/../aristotle_local/etc/assignments:$ari_top_dir/etc:$ari_top_dir/etc/assignments}"
+assignment_path=($(echo "$ari_assignment_path" | tr ':' ' '))
+
+debug_level=${ARI_DEBUG_LEVEL:-0}
+project=
+verbose=0
+
+while getopts D:a:v option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	a)
+		project="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$project" ]; then
+	panic "no assignment specified"
+fi
+
+found=0
+for dir in "${assignment_path[@]}"; do
+	target_file="$dir/$project.asgn"
+	if [ "$verbose" -ge 1 ]; then
+		eecho "testing $target_file"
+	fi
+	if [ -f "$target_file" ]; then
+		echo "$target_file"
+		found=1
+		break
+	fi
+done
+
+if [ "$found" -eq 0 ]; then
+	panic "could not find assignment $project"
+fi
+
+exit 0

@@ -28,9 +28,6 @@ abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
 source "$cmd_dir/utilities" || exit 1
 #etc_dir="$cmd_dir/../etc"
 
-default_assignments_dir="$cmd_dir/../etc/default_assignments"
-assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
-
 usage()
 {
 	echo "$@"
@@ -57,6 +54,7 @@ warn()
 ari_info="$abs_cmd_dir/ari_info"
 ari_locate="$abs_cmd_dir/ari_locate"
 ari_lndir="$abs_cmd_dir/ari_lndir"
+ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
 
 project_dir=$("$ari_locate" -q) || project_dir=
 packages=()
@@ -93,6 +91,10 @@ fi
 
 project=$(cat "$project_dir/assignment_id") || \
   panic "cannot get assignment ID"
+assignment_file=$("$ari_find_assignment" -a "$project") || \
+  panic "cannot find assignment $project"
+assignment_dir=$(dirname "$assignment_file") || \
+  panic "cannot get directory of $assignment_file"
 
 if [ "${#packages[@]}" -eq 0 ]; then
 	packages=($("$ari_info" -D "$debug_level" -a "$project" packages)) || \
@@ -144,7 +146,7 @@ for package in "${packages[@]}"; do
 	saved_ifs="$IFS"
 	IFS=$'\ca'
 	generate_program=($(\
-	  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+	  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 	  ARI_BIN_DIR="$abs_cmd_dir" \
 	  ARI_DIST_DIR="$dist_dir" \
 	  ARI_SOURCE_DIR="$source_dir" \
@@ -164,9 +166,9 @@ for package in "${packages[@]}"; do
 			#eecho "Running generate program ${generate_program[@]}"
 			eecho "Running ${generate_program[@]}"
 		fi
-		PATH="$PATH:$cmd_dir" \
-		  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
-		  ARI_BIN_DIR="$cmd_dir" \
+		PATH="$PATH:$abs_cmd_dir" \
+		  ARI_ASSIGNMENT_DIR="$assignment_dir" \
+		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_DIST_DIR="$dist_dir" \
 		  ARI_SOURCE_DIR="$source_dir" \
 		  "${generate_program[@]}" || \

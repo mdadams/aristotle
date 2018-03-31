@@ -24,11 +24,9 @@
 # __END_OF_LICENSE__
 
 cmd_dir=$(dirname "$0") || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
 source "$cmd_dir/utilities" || exit 1
 #etc_dir="$cmd_dir/../etc"
-
-default_assignments_dir="$cmd_dir/../etc/default_assignments"
-assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
 
 strip_trailing_slashes()
 {
@@ -67,6 +65,7 @@ ari_info="$cmd_dir/ari_info"
 ari_locate="$cmd_dir/ari_locate"
 ari_student_info="$cmd_dir/ari_student_info"
 ari_validate_line="$cmd_dir/ari_validate_line"
+ari_find_assignment="$cmd_dir/ari_find_assignment"
 
 project_dir=$("$ari_locate" -q) || project_dir=
 packages=()
@@ -99,6 +98,10 @@ fi
 
 project=$(cat "$project_dir/assignment_id") || \
   panic "cannot get assignment ID"
+assignment_file=$("$ari_find_assignment" -a "$project") || \
+  panic "cannot find assignment $project"
+assignment_dir=$(dirname "$assignment_file") || \
+  panic "cannot get directory of $assignment_file"
 
 dist_dir="$project_dir/distribution"
 
@@ -205,8 +208,8 @@ submission_source=$(cat "$submission_source_file") || \
 saved_ifs="$IFS"
 IFS=$'\ca'
 student_info_program=($(\
-  ARI_BIN_DIR="$cmd_dir" \
-  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+  ARI_BIN_DIR="$abs_cmd_dir" \
+  ARI_ASSIGNMENT_DIR="$assignment_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$ari_info" -a "$project" -e -d "$IFS" student_info_program))
 status=$?
@@ -316,8 +319,8 @@ echo "$section" > "$section_file"
 saved_ifs="$IFS"
 IFS=$'\ca'
 validate_program=($(\
-  ARI_BIN_DIR="$cmd_dir" \
-  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+  ARI_BIN_DIR="$abs_cmd_dir" \
+  ARI_ASSIGNMENT_DIR="$assignment_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$ari_info" -a "$project" -e -d "$IFS" validate))
 status=$?
@@ -332,8 +335,8 @@ if [ "${#validate_program[@]}" -ge 1 ]; then
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running ${validate_program[@]}"
 	fi
-	ARI_BIN_DIR="$cmd_dir" \
-	  ARI_ASSIGNMENTS_DIR="$assignments_dir" \
+	ARI_BIN_DIR="$abs_cmd_dir" \
+	  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 	  ARI_DIST_DIR="$dist_dir" \
 	  "${validate_program[@]}"
 	status=$?

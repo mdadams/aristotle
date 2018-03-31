@@ -26,8 +26,7 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
-default_assignments_dir="$cmd_dir/../etc/default_assignments"
-assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
+ari_find_assignment="$cmd_dir/ari_find_assignment"
 
 get_package_name()
 {
@@ -102,7 +101,8 @@ if [ -z "$in_file" ]; then
 	if [ -z "$project" ]; then
 		panic
 	fi
-	in_file="$assignments_dir/$project.asgn"
+	in_file=$("$ari_find_assignment" -a "$project") || \
+	  panic "cannot find assignment $project"
 fi
 
 if [ "$debug_level" -ge 1 ]; then

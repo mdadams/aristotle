@@ -53,6 +53,21 @@ The default value for the assignment-definition directory chosen by the
 installer can be overridden with the "-a" option.
 
 
+Configuration
+=============
+
+ARI_ASSIGNMENT_PATH
+This environment variable is set to a colon-separated list of directories
+in which to search for assignment-definition files.
+If not set, the software will look in the following directories (in order):
+    $ARI_ROOT_DIR/../aristotle_local/etc
+    $ARI_ROOT_DIR/../aristotle_local/etc/assignments
+    $ARI_ROOT_DIR/etc
+    $ARI_ROOT_DIR/etc/assignments
+where $ARI_ROOT_DIR denotes the top-level directory of the Aristotle
+software installation.
+
+
 Assignment Properties
 =====================
 
@@ -254,9 +269,8 @@ The following variables are available:
     The bin directory for the Aristotle software
     (i.e., the directory in which the Aristotle commands are installed).
 
-    ARI_ASSIGNMENTS_DIR
-    The assignment-definition directory
-    (i.e., the directory in which assignment-definitions files can be found).
+    ARI_ASSIGNMENT_DIR
+    The directory in which the assignment definition file is located.
 
     ARI_SOURCE_DIR
     The directory that contains the source code for a package.

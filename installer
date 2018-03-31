@@ -116,14 +116,14 @@ for dir in bin etc; do
 	tree_copy "$cmd_dir/$dir" "$target_dir" || panic
 done
 
-target_file="$install_dir/etc/default_assignments"
-if [ ! \( -L "$target_file" -o -e "$target_file" \) ]; then
-	if [ -z "$assignments_dir" ]; then
-		assignments_dir="assignments"
-	fi
-	ln -s "$assignments_dir" "$target_file" || \
-	  panic "cannot make symlink $target_file"
-fi
+#target_file="$install_dir/etc/default_assignments"
+#if [ ! \( -L "$target_file" -o -e "$target_file" \) ]; then
+#	if [ -z "$assignments_dir" ]; then
+#		assignments_dir="assignments"
+#	fi
+#	ln -s "$assignments_dir" "$target_file" || \
+#	  panic "cannot make symlink $target_file"
+#fi
 
 tree_adjust_perms public "$install_dir" || \
   panic "cannot set permissions (permissions may be not correct)"

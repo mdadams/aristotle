@@ -27,9 +27,6 @@ cmd_dir=$(dirname "$0") || exit 1
 abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
-default_assignments_dir="$cmd_dir/../etc/default_assignments"
-assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
-
 usage()
 {
 	echo "$@"

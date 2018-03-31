@@ -26,9 +26,6 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
-default_assignments_dir="$cmd_dir/../etc/default_assignments"
-assignments_dir=${ARI_ASSIGNMENTS_DIR:-"$default_assignments_dir"}
-
 usage()
 {
 	echo "$@"
@@ -56,6 +53,7 @@ usage()
 ari_get_assignment="$cmd_dir/ari_get_assignment"
 ari_ifinfo="$cmd_dir/ari_ifinfo"
 ari_validate_line="$cmd_dir/ari_validate_line"
+ari_find_assignment="$cmd_dir/ari_find_assignment"
 
 project_dir=
 default_project=
@@ -270,8 +268,9 @@ fi
 echo "$project" > "$project_dir/assignment_id" || \
   panic "cannot make assignment ID file"
 
-assignment_file="$assignments_dir/$project.asgn"
-if [ ! -e "$assignment_file" ]; then
+assignment_file=$("$ari_find_assignment" -a "$project") || \
+  assignment_file=""
+if [ -z "$assignment_file" -o ! -e "$assignment_file" ]; then
 	eecho "WARNING: assignment with ID $project does not appear to be defined"
 fi
 

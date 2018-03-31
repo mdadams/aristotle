@@ -2,14 +2,14 @@ name "Hello World"
 required_files IDENTIFICATION.txt Makefile hello.cpp
 report_files Makefile hello.cpp
 
-#validate ${ARI_ASSIGNMENTS_DIR}/../bin/hello-validate ${ARI_DIST_DIR}
+#validate ${ARI_ASSIGNMENT_DIR}/../bin/hello-validate ${ARI_DIST_DIR}
 
 packages original
 package-original/name "The original code as submitted by the student."
 package-original/builds hello
 package-original/tests hello
 #package-original/generate \
-#  ${ARI_ASSIGNMENTS_DIR}/../bin/hello-original-generate ${ARI_DIST_DIR} ${ARI_SOURCE_DIR}
+#  ${ARI_ASSIGNMENT_DIR}/../bin/hello-original-generate ${ARI_DIST_DIR} ${ARI_SOURCE_DIR}
 
 package-original/build-hello/name "Build the hello program."
 #package-original/build-hello/executables hello
@@ -18,4 +18,4 @@ package-original/test-hello/name "Test the hello program."
 package-original/test-hello/depends_on build-hello
 package-original/test-hello/timeout 10
 package-original/test-hello/test \
-  ${ARI_ASSIGNMENTS_DIR}/../public/bin/hello-original-hello-test ${ARI_DERIVED_DIR}
+  ${ARI_ASSIGNMENT_DIR}/../public/bin/hello-original-hello-test ${ARI_DERIVED_DIR}
