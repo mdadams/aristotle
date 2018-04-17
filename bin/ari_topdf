@@ -42,10 +42,10 @@ ari_mktemp="$cmd_dir/ari_mktemp"
 
 preprocess()
 {
-	local recode=$(type -P recode) || recode=
-	if [ -x "$recode" ]; then
+	local recode_program=$(type -P recode) || recode_program=
+	if [ -x "$recode_program" ]; then
 		# Convert from UTF-8 to Latin-1 encoding.
-		"$recode" UTF-8..Latin-1
+		"$recode_program" UTF-8..Latin-1
 	else
 		# The recode command is not available.
 		#cat
@@ -84,6 +84,10 @@ usage()
 ################################################################################
 #
 ################################################################################
+
+a2ps_program=$(type -P a2ps) || a2ps_program=
+ps2pdf_program=$(type -P ps2pdf) || ps2pdf_program=
+pdfjam_program=$(type -P pdfjam) || pdfjam_program=
 
 #a2ps_base_opts+=(-M letter)
 a2ps_base_opts+=(-M Letterdj)
@@ -151,6 +155,16 @@ fi
 
 if [ -z "$out_file" ]; then
 	usage "no output file specified"
+fi
+
+if [ -z "$a2ps_program" ]; then
+	panic "a2ps program not found"
+fi
+if [ -z "$ps2pdf_program" ]; then
+	panic "ps2pdf program not found"
+fi
+if [ -z "$pdfjam_program" ]; then
+	panic "pdfjam program not found"
 fi
 
 user_name=$(whoami) || panic "cannot determine user"
@@ -248,25 +262,35 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 			file="$blank_file"
 		fi
 		if [ "$debug_level" -ge 2 ]; then
-			eecho "Running a2ps ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
+			eecho "Running $a2ps_program ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
 		fi
+		# Note: In the following command pipeline, if the program
+		# $a2ps_program does not exist, the $ps2pdf_command program will
+		# receive no input and generate a PDF document consisting of a
+		# single blank page and return with an EXIT STATUS OF ZERO.
+		# Consequently, we must ensure that the program $a2ps_program exists.
 		cat "$file" | preprocess | \
-		  a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
+		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  ps2pdf - - > "$tmp_file" || \
+		  "$ps2pdf_program" - - > "$tmp_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	text)
 		if [ "$num_lines" -eq 0 ]; then
 			file="$blank_file"
 		fi
-		#a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - "$file" \
 		if [ "$debug_level" -ge 2 ]; then
-			eecho "Running a2ps ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
+			eecho "Running $a2ps_program ${a2ps_base_opts[@]} ${a2ps_opts[@]} ..."
 		fi
-		cat "$file" | a2ps "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
+		# Note: In the following command pipeline, if the program
+		# $a2ps_program does not exist, the $ps2pdf_command program will
+		# receive no input and generate a PDF document consisting of a
+		# single blank page and return with an EXIT STATUS OF ZERO.
+		# Consequently, we must ensure that the program $a2ps_program exists.
+		cat "$file" | \
+		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  ps2pdf - - > "$tmp_file" || \
+		  "$ps2pdf_program" - - > "$tmp_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	pdf)
@@ -291,7 +315,7 @@ fi
 if [ "$debug_level" -ge 1 ]; then
 	echo "Running pdfjam ${pdfjam_opts[@]}"
 fi
-pdfjam "${pdfjam_opts[@]}" 2> /dev/null || panic "pdfjam failed"
+"$pdfjam_program" "${pdfjam_opts[@]}" 2> /dev/null || panic "pdfjam failed"
 
 if [ "$cleanup" -ne 0 ]; then
 	for file in "${tmp_files[@]}"; do

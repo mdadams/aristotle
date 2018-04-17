@@ -543,7 +543,7 @@ topdf_opts+=("${topdf_other_opts[@]}")
 if [ "$verbose" -ge 2 ]; then
 	echo "Running $topdf ${topdf_opts[@]}"
 fi
-"$topdf" "${topdf_opts[@]}"
+"$topdf" "${topdf_opts[@]}" || panic "PDF generation failed"
 
 if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
 	rm -rf "$tmp_dir" || echo "cannot remove temporary directory $tmp_dir"
