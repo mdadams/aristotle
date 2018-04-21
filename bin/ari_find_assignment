@@ -25,10 +25,40 @@
 
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
+ari_top_dir="$abs_cmd_dir/.."
 
-ari_top_dir="$cmd_dir/.."
-ari_assignment_path="${ARI_ASSIGNMENT_PATH:-$ari_top_dir/../aristotle_local/etc:$ari_top_dir/../aristotle_local/etc/assignments:$ari_top_dir/etc:$ari_top_dir/etc/assignments}"
-assignment_path=($(echo "$ari_assignment_path" | tr ':' ' '))
+################################################################################
+# Initialize search path for assignment-definition files.
+################################################################################
+
+default_assignment_path=()
+default_assignment_path+=("$ari_top_dir/../aristotle_local/etc")
+default_assignment_path+=("$ari_top_dir/../aristotle_local/etc/assignments")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_0/etc")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_0/etc/assignments")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_1/etc")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_1/etc/assignments")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_2/etc")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_2/etc/assignments")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_3/etc")
+default_assignment_path+=("$ari_top_dir/../aristotle_local_3/etc/assignments")
+default_assignment_path+=("$ari_top_dir/etc")
+default_assignment_path+=("$ari_top_dir/etc/assignments")
+if [ -z "${ARI_ASSIGNMENT_PATH+x}" ]; then
+	assignment_path=()
+	for dir in "${default_assignment_path[@]}"; do
+		if [ -d "$dir" ]; then
+			assignment_path+=("$dir")
+		fi
+	done
+else
+	assignment_path=($(echo "$ARI_ASSIGNMENT_PATH" | tr ':' ' '))
+fi
+
+################################################################################
+# Process command line.
+################################################################################
 
 debug_level=${ARI_DEBUG_LEVEL:-0}
 project=
@@ -48,9 +78,20 @@ while getopts D:a:v option; do
 done
 shift $((OPTIND - 1))
 
+if [ "$debug_level" -ge 1 ]; then
+	eecho "assignment path:"
+	for dir in "${assignment_path[@]}"; do
+		eecho "    $dir"
+	done
+fi
+
 if [ -z "$project" ]; then
 	panic "no assignment specified"
 fi
+
+################################################################################
+# Locate assignment-definition file.
+################################################################################
 
 found=0
 for dir in "${assignment_path[@]}"; do

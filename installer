@@ -35,17 +35,17 @@ usage()
 {
 	echo "$@"
 	cat <<- EOF
-	usage: $0 [options] -d install_dir
+	usage: $0 [options] -d \$install_dir
 	options:
-	-d install_dir
-	    Set the install directory to install_dir.
-	-a assignments_dir
-	    Set the default assignment-definition directory to assignments_dir.
+	-d \$install_dir
+	    Set the install directory to \$install_dir.
+	-a \$assignments_dir
+	    Set the default assignment-definition directory to \$assignments_dir.
 	-c
 	    Remove old files first.
 	for example:
-	    $0 -d /usr/local/sde/packages/aristotle
-	    $0 -d /usr/local/sde/packages/aristotle -c
+	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
+	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
 	(avoid -c if symlink for assignments might be deleted)
 	EOF
 	exit 2
