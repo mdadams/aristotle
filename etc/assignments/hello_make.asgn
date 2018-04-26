@@ -1,5 +1,6 @@
 name "Hello World"
 required_files IDENTIFICATION.txt Makefile hello.cpp
+blacklisted_files *
 report_files Makefile hello.cpp
 
 #validate ${ARI_ASSIGNMENT_DIR}/../bin/hello-validate ${ARI_DIST_DIR}

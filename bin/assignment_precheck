@@ -64,8 +64,8 @@ usage()
 	exit 2
 }
 
-if [ "$SDE_NAME" != "elec486" ]; then
-	echo "WARNING: use sde_shell -n elec486"
+if [ -z "$SDE_NAME" ]; then
+	echo "WARNING: use sde_shell"
 fi
 
 user=$(whoami) || panic "cannot determine user"

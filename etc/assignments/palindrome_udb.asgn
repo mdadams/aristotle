@@ -2,6 +2,8 @@
 name "Palindrome Test"
 # The files that must be included in the assignment submission.
 required_files IDENTIFICATION.txt CMakeLists.txt is_palindrome.cpp
+# Specify that any files not explicitly allowed should be disallowed.
+blacklisted_files *
 # The files from the original submission that are to be included in the
 # generated report.
 report_files CMakeLists.txt is_palindrome.cpp
