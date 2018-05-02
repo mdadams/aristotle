@@ -132,16 +132,16 @@ for in_source in "${in_sources[@]}"; do
 
 	case "$in_type" in
 	zip)
-		base=$(basename "$in_source" .zip) || panic
+		base=$(basename "$in_source" .zip) || panic "cannot get basename"
 		;;
 	tgz)
-		base=$(basename "$in_source" .tar.gz) || panic
+		base=$(basename "$in_source" .tar.gz) || panic "cannot get basename"
 		;;
 	directory|dir)
-		base=$(basename "$in_source") || panic
+		base=$(basename "$in_source") || panic "cannot get basename"
 		;;
 	git)
-		base=$(basename "$in_source" .git) || panic
+		base=$(basename "$in_source" .git) || panic "cannot get basename"
 		;;
 	esac
 

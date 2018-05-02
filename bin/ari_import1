@@ -240,7 +240,7 @@ if [ -z "$default_project" ]; then
 	ARI_SUBMISSION_SOURCE="$in_source" \
 	  ARI_DIST_DIR="$dist_dir" \
 	  "$get_assignment_program" \
-	  )
+	  ) || panic "cannot determine assignment"
 else
 	project="$default_project"
 fi
