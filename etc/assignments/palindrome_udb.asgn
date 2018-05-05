@@ -6,7 +6,7 @@ required_files IDENTIFICATION.txt CMakeLists.txt is_palindrome.cpp
 blacklisted_files *
 # The files from the original submission that are to be included in the
 # generated report.
-report_files CMakeLists.txt is_palindrome.cpp
+report_files ${ARI_COMMIT_HISTORY_FILE} CMakeLists.txt is_palindrome.cpp
 # The packages defined for this assignment (namely, one called "original").
 packages original
 

@@ -1,7 +1,7 @@
 name "Hello World"
 required_files IDENTIFICATION.txt CMakeLists.txt hello.cpp
 blacklisted_files *
-report_files CMakeLists.txt hello.cpp
+report_files ${ARI_COMMIT_HISTORY_FILE} CMakeLists.txt hello.cpp
 
 #validate ${ARI_ASSIGNMENT_DIR}/../bin/hello-validate ${ARI_DIST_DIR}
 
