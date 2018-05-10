@@ -396,7 +396,7 @@ for package in "${packages[@]}"; do
 		if [ "$verbose" -ge 1 ]; then
 			print_status \
 			  "$reproducible" "$package" "configure" "---" \
-			  "$configure_status" "$configure_time" "" ""
+			  "$configure_status" "$configure_time" "" "$configure_log_length"
 		fi
 		print_status \
 		  "$reproducible" "$package" "configure" "---" "$configure_status" \
