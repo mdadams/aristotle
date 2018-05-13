@@ -347,6 +347,7 @@ if [ "${#validate_program[@]}" -ge 1 ]; then
 fi
 
 if [ "$verbose" -ge 1 ]; then
+	echo "Assignment ID: $project"
 	echo "Student Name: $student_name"
 	#echo "Student ID: $student_id"
 	echo "Email: $student_email"
