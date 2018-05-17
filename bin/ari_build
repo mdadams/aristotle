@@ -471,6 +471,9 @@ for package in "${packages[@]}"; do
 		if [ "$status" -ne 0 ]; then
 			panic "cannot get real build targets"
 		fi
+		if [ "${#real_targets[@]}" -eq 0 ]; then
+			real_targets=("$target")
+		fi
 
 		saved_ifs="$IFS"
 		IFS=$'\ca'
@@ -499,9 +502,9 @@ for package in "${packages[@]}"; do
 			fi
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			if [ "${#real_targets[@]}" -eq 0 ]; then
-				real_targets=(all)
-			fi
+#			if [ "${#real_targets[@]}" -eq 0 ]; then
+#				real_targets=(all)
+#			fi
 			for real_target in "${real_targets[@]}"; do
 				cmake_opts=()
 				if [ "$target" != all ]; then
