@@ -475,10 +475,10 @@ for file in "${file_list[@]}"; do
 	else
 		target_file="$dist_dir/$file"
 	fi
-	relpath=$("$ari_relpath" -r "$dist_dir" "$target_file") || \
-	  panic "cannot get relative path"
 	if [ -f "$target_file" ]; then
 		upness=1
+		relpath=$("$ari_relpath" -r "$dist_dir" "$target_file") || \
+		  panic "cannot get relative path"
 		topdf_other_opts+=(-u "$upness" -l -t "$relpath" -i "$target_file")
 	fi
 done
