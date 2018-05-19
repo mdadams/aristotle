@@ -116,6 +116,7 @@ source "$cmd_dir/utilities" || exit 1
 ari_info="$abs_cmd_dir/ari_info"
 ari_locate="$abs_cmd_dir/ari_locate"
 ari_mktemp="$abs_cmd_dir/ari_mktemp"
+ari_relpath="$abs_cmd_dir/ari_relpath"
 topdf="$abs_cmd_dir/ari_topdf"
 
 user_name=`whoami` || panic "cannot get user name"
@@ -474,9 +475,11 @@ for file in "${file_list[@]}"; do
 	else
 		target_file="$dist_dir/$file"
 	fi
+	relpath=$("$ari_relpath" -r "$dist_dir" "$target_file") || \
+	  panic "cannot get relative path"
 	if [ -f "$target_file" ]; then
 		upness=1
-		topdf_other_opts+=(-u "$upness" -l -i "$target_file")
+		topdf_other_opts+=(-u "$upness" -l -t "$relpath" -i "$target_file")
 	fi
 done
 
