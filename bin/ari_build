@@ -577,11 +577,6 @@ for package in "${packages[@]}"; do
 		build_time=$("$ari_calc" -f "%.1f" \
 		  "$build_end_time - $build_start_time") || \
 		  panic "cannot calculate build time"
-		echo "$build_status" > "$build_status_file" || \
-		  panic "cannot make build status file"
-		echo "$build_time" > "$build_time_file" || \
-		  panic "cannot make build time file"
-
 		build_log_length=$(count_lines "$build_log_file") || \
 		  panic "cannot get build log length"
 
@@ -598,6 +593,11 @@ for package in "${packages[@]}"; do
 				  "$summary_2_file"
 			fi
 		done
+
+		echo "$build_status" > "$build_status_file" || \
+		  panic "cannot make build status file"
+		echo "$build_time" > "$build_time_file" || \
+		  panic "cannot make build time file"
 
 		if [ "$verbose" -ge 1 ]; then
 			print_status "$reproducible" "$package" "build" "$target" \

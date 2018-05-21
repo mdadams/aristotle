@@ -170,7 +170,7 @@ fi
 					}
 				} else if (quoted == "" && c == "#") {
 					# We are not quoting, and the character is a hash.
-printf "XXX %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
+					printf "unquoted hash %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
 					if (field_no == 0) {
 						tag = buffer;
 						if (tag == the_tag) {
@@ -202,8 +202,9 @@ printf "XXX %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
 					  active_record, active_field > err;
 				} else if (quoted == "" && (c == " " || c == "\t" ||
 				  c == newline)) {
-					# We are not quoting, and the character is a space or tab.
-printf "XXX %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
+					# We are not quoting, and the character is whitespace
+					# (i.e., a space, tab, or newline character).
+					printf "unquoted whitespace %s %s %d\n", tag, the_tag, (tag == the_tag) > err;
 					if (field_no == 0) {
 						tag = buffer;
 						if (tag == the_tag) {
