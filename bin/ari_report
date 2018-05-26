@@ -208,8 +208,16 @@ student_email=$(cat "$project_dir/student_email") || \
 section=$(cat "$project_dir/section") || \
   panic "cannot get section"
 
+submission_source_file="$project_dir/submission_source"
+if [ -f "$submission_source_file" ]; then
+	submission_source=$(cat "$submission_source_file") || \
+	  panic "cannot get submission source"
+else
+	submission_source="?"
+fi
+
 # Note: An absolute path is needed since relative paths are interpreted
-# relative to the distibution directory.
+# relative to the distribution directory.
 commit_history_file="$abs_project_dir/commit_history"
 
 summary_file="$tmp_dir/summary"
@@ -507,6 +515,8 @@ Section: $section
 
 Assignment ID: $project
 Assignment Title: $project_name
+
+Submission Source: $submission_source
 
 Submitted Files
 ===============
