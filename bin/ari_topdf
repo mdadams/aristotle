@@ -53,6 +53,15 @@ preprocess()
 	fi
 }
 
+is_valid_pdf()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	local in_file="$1"
+	pdfinfo "$1" >& /dev/null
+}
+
 usage()
 {
 	echo "$@"
@@ -228,6 +237,11 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 
 	if [ "$verbose" -ge 1 ]; then
 		echo "ari_topdf file $file format $format title $title"
+	fi
+
+	if [ "$format" = pdf ]; then
+		is_valid_pdf "$file" || \
+		  panic "$file is not a valid PDF file"
 	fi
 
 	a2ps_opts=()

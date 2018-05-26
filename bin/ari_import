@@ -149,7 +149,8 @@ for in_source in "${in_sources[@]}"; do
 		project_dir="${project_dir_prefix}$base"
 	fi
 
-	if [ "$verbose" -ge 1 -a ${#in_source[@]} -gt 1 ]; then
+	#if [ "$verbose" -ge 1 -a ${#in_source[@]} -gt 1 ]; then
+	if [ "$verbose" -ge 1 ]; then
 		cat <<- EOF
 		############################################################
 		Processing $in_source
