@@ -449,7 +449,7 @@ for package in "${packages[@]}"; do
 		if [ "$missing_dependencies" -ne 0 ]; then
 			if [ "$verbose" -ge 1 ]; then
 					print_status "$reproducible" "$package" "build" \
-					  "$target" "" "" ""
+					  "$target" "D" "" "" ""
 			fi
 			continue
 		fi
