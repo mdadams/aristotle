@@ -216,6 +216,14 @@ else
 	submission_source="?"
 fi
 
+commit_id_file="$project_dir/commit_id"
+if [ -f "$commit_id_file" ]; then
+	commit_id=$(cat "$commit_id_file") || \
+	  panic "cannot get commit ID"
+else
+	commit_id="?"
+fi
+
 # Note: An absolute path is needed since relative paths are interpreted
 # relative to the distribution directory.
 commit_history_file="$abs_project_dir/commit_history"
@@ -517,6 +525,7 @@ Assignment ID: $project
 Assignment Title: $project_name
 
 Submission Source: $submission_source
+Commit ID: $commit_id
 
 Submitted Files
 ===============

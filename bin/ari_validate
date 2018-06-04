@@ -201,9 +201,17 @@ student_id_file="$project_dir/student_id"
 student_email_file="$project_dir/student_email"
 section_file="$project_dir/section"
 submission_source_file="$project_dir/submission_source"
+commit_id_file="$project_dir/commit_id"
 
 submission_source=$(cat "$submission_source_file") || \
   panic "cannot get submission source"
+
+if [ -f "$commit_id_file" ]; then
+	commit_id=$(cat "$commit_id_file") || \
+	  panic "cannot get commit ID"
+else
+	commit_id="?"
+fi
 
 saved_ifs="$IFS"
 IFS=$'\ca'
@@ -347,11 +355,14 @@ if [ "${#validate_program[@]}" -ge 1 ]; then
 fi
 
 if [ "$verbose" -ge 1 ]; then
-	echo "Assignment ID: $project"
-	echo "Student Name: $student_name"
-	#echo "Student ID: $student_id"
-	echo "Email: $student_email"
-	echo "Section: $section"
+	cat <<- EOF
+	Assignment ID: $project
+	Student Name: $student_name
+	Email: $student_email
+	Section: $section
+	Submission Source: $submission_source
+	Commit ID: $commit_id
+	EOF
 fi
 
 if [ "$num_errors" -gt 0 ]; then
