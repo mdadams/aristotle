@@ -60,6 +60,24 @@ fi
 # Process command line.
 ################################################################################
 
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	Usage:
+	$0 [options]
+
+	Options:
+	-a
+	    Specify assignment.
+	-v
+	    Increase verbosity level.
+	-D \$debug_level
+	    Set debug level to \$debug_level.
+	EOF
+	exit 2
+}
+
 debug_level=${ARI_DEBUG_LEVEL:-0}
 project=
 verbose=0

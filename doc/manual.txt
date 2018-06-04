@@ -335,6 +335,14 @@ The top-level directory of a workspace contains the following:
     assignment_id
     A file containing the assignment ID.
 
+    commit_history
+    A file that contains the commit log for an assignment submission imported
+    from a Git repository.
+
+    commit_id
+    A file that contains the commit associated with an assignment submission
+    imported from a Git repository.
+
     distribution
     The directory tree exactly as submitted by the student.
 

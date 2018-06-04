@@ -122,6 +122,7 @@ dist_dir="$project_dir/distribution"
 signature_file="$project_dir/.aristotle"
 submission_source_file="$project_dir/submission_source"
 commit_history_file="$project_dir/commit_history"
+commit_id_file="$project_dir/commit_id"
 
 mkdir -p "$project_dir" || panic "cannot make directory $project_dir"
 
@@ -203,6 +204,10 @@ git)
 	# Get the commit history.
 	(chdir "$dist_dir" && git log "$in_subtype") > "$commit_history_file" || \
 	  panic "cannot get commit history"
+
+	# Get the commit ID that has been checked out.
+	(chdir "$dist_dir" && git rev-parse HEAD) > "$commit_id_file" || \
+	  panic "cannot get commit ID of HEAD"
 
 	# Remove any Git repository directories.
 	find "$dist_dir" \

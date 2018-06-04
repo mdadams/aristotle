@@ -350,7 +350,7 @@ print_status()
 	if [ "${#info_items[@]}" -gt 0 ]; then
 		info="$info (${info_items[*]})"
 	fi
-	printf "%-16.16s %-12.12s %-16.16s %-s\n" \
+	printf "%-16.16s %-9.9s %-16.16s %-s\n" \
 	  "$package" "$operation" "$target" "$info"
 }
 
