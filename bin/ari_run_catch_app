@@ -124,9 +124,9 @@ if [ "$app_exit_status" -ne 0 ]; then
 	# test cases:  6 |  5 passed | 1 failed
 	# assertions: 84 | 80 passed | 4 failed
 	# [blank line]
-	if [ "$num_test_cases" -lt 128 -a "$app_exit_status" -ge 128 ]; then
-		completed=0
-	fi
+#	if [ "$num_test_cases" -lt 128 -a "$app_exit_status" -ge 128 ]; then
+#		completed=0
+#	fi
 	test_cases_buffer=$(get_nth_last_line 3 "$log_file") || \
 	  panic "cannot get test cases line"
 	assertions_buffer=$(get_nth_last_line 2 "$log_file") || \
