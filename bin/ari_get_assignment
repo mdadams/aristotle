@@ -28,6 +28,19 @@ source "$cmd_dir/utilities" || exit 1
 
 ari_ifinfo="$cmd_dir/ari_ifinfo"
 
+usage()
+{
+	cat <<- EOF
+	usage:
+	$0 [options]
+
+	Options:
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+	EOF
+	exit 2
+}
+
 debug_level=${ARI_DEBUG_LEVEL:-0}
 
 while getopts D: option; do

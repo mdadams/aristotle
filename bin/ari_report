@@ -187,6 +187,7 @@ project=$(cat "$project_dir/assignment_id") || \
   panic "cannot get assignment ID"
 
 dist_dir="$project_dir/distribution"
+abs_extras_dir="$abs_project_dir/extras"
 
 project_name=$("$ari_info" -a "$project" name) || \
   panic "cannot get project name"
@@ -235,6 +236,8 @@ summary_2_file="$tmp_dir/summary_2"
 #report_files=($("$ari_info" -a "$project" report_files)) || \
 #  panic "cannot get report files"
 report_files_env=()
+report_files_env+=("ARI_WORKSPACE_DIR=$abs_project_dir")
+report_files_env+=("ARI_EXTRAS_DIR=$abs_extras_dir")
 if [ -f "$commit_history_file" ]; then
 	report_files_env+=("ARI_COMMIT_HISTORY_FILE=$commit_history_file")
 fi
