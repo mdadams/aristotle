@@ -114,6 +114,8 @@ if [ -z "$project_dir" ]; then
 	panic "no project directory"
 fi
 
+extras_dir="$project_dir/extras"
+
 project=$(cat "$project_dir/assignment_id") || \
   panic "cannot get assignment ID"
 assignment_file=$("$ari_find_assignment" -a "$project") || \
@@ -224,6 +226,8 @@ for package in "${packages[@]}"; do
 		saved_ifs="$IFS"
 		IFS=$'\ca'
 		test_env=($( \
+		  ARI_WORKSPACE_DIR="$project_dir" \
+		  ARI_EXTRAS_DIR="$extras_dir" \
 		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 		  ARI_SOURCE_DIR="$source_dir" \
@@ -241,6 +245,8 @@ for package in "${packages[@]}"; do
 		saved_ifs="$IFS"
 		IFS=$'\ca'
 		test_program=($( \
+		  ARI_WORKSPACE_DIR="$project_dir" \
+		  ARI_EXTRAS_DIR="$extras_dir" \
 		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 		  ARI_SOURCE_DIR="$source_dir" \
@@ -266,7 +272,9 @@ for package in "${packages[@]}"; do
 		fi
 		test_start_time=$(time_since_epoch) || \
 		  panic "cannot get start time"
-		ARI_BIN_DIR="$abs_cmd_dir" \
+		ARI_WORKSPACE_DIR="$project_dir" \
+		  ARI_EXTRAS_DIR="$extras_dir" \
+		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 		  ARI_SOURCE_DIR="$source_dir" \
 		  ARI_DERIVED_DIR="$derived_dir" \

@@ -104,6 +104,7 @@ assignment_dir=$(dirname "$assignment_file") || \
   panic "cannot get directory of $assignment_file"
 
 dist_dir="$project_dir/distribution"
+extras_dir="$project_dir/extras"
 
 num_errors=0
 
@@ -216,6 +217,8 @@ fi
 saved_ifs="$IFS"
 IFS=$'\ca'
 student_info_program=($(\
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_BIN_DIR="$abs_cmd_dir" \
   ARI_ASSIGNMENT_DIR="$assignment_dir" \
   ARI_DIST_DIR="$dist_dir" \
@@ -239,6 +242,8 @@ fi
 
 student_name=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$student_info_program" name \
   )
@@ -257,6 +262,8 @@ fi
 
 student_id=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$student_info_program" student_id \
   )
@@ -283,6 +290,8 @@ echo "$student_id" > "$student_id_file"
 
 student_email=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$student_info_program" email \
   )
@@ -301,6 +310,8 @@ fi
 
 section=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_DIST_DIR="$dist_dir" \
   "$student_info_program" section \
   )
@@ -327,6 +338,8 @@ echo "$section" > "$section_file"
 saved_ifs="$IFS"
 IFS=$'\ca'
 validate_program=($(\
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
   ARI_BIN_DIR="$abs_cmd_dir" \
   ARI_ASSIGNMENT_DIR="$assignment_dir" \
   ARI_DIST_DIR="$dist_dir" \
@@ -343,7 +356,9 @@ if [ "${#validate_program[@]}" -ge 1 ]; then
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running ${validate_program[@]}"
 	fi
-	ARI_BIN_DIR="$abs_cmd_dir" \
+	ARI_WORKSPACE_DIR="$project_dir" \
+	  ARI_EXTRAS_DIR="$extras_dir" \
+	  ARI_BIN_DIR="$abs_cmd_dir" \
 	  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 	  ARI_DIST_DIR="$dist_dir" \
 	  "${validate_program[@]}"

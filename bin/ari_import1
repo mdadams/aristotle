@@ -119,6 +119,7 @@ if [ -d "$project_dir" ]; then
 fi
 
 dist_dir="$project_dir/distribution"
+extras_dir="$project_dir/extras"
 signature_file="$project_dir/.aristotle"
 submission_source_file="$project_dir/submission_source"
 commit_history_file="$project_dir/commit_history"
@@ -129,7 +130,7 @@ mkdir -p "$project_dir" || panic "cannot make directory $project_dir"
 echo "Aristotle" > "$signature_file"
 echo "$in_source" > "$submission_source_file"
 
-for dir in distribution; do
+for dir in distribution extras; do
 	target_dir="$project_dir/$dir"
 	mkdir -p "$target_dir" || \
 	  panic "cannot make directory $target_dir"
@@ -243,6 +244,8 @@ fi
 if [ -z "$default_project" ]; then
 	project=$( \
 	ARI_SUBMISSION_SOURCE="$in_source" \
+	  ARI_WORKSPACE_DIR="$project_dir" \
+	  ARI_EXTRAS_DIR="$extras_dir" \
 	  ARI_DIST_DIR="$dist_dir" \
 	  "$get_assignment_program" \
 	  ) || panic "cannot determine assignment"

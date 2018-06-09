@@ -272,6 +272,14 @@ The following variables are available:
     ARI_ASSIGNMENT_DIR
     The directory in which the assignment definition file is located.
 
+    ARI_WORKSPACE_DIR
+    The top-level directory of the assignment workspace.
+
+    ARI_EXTRAS_DIR
+    A directory in the assignment workspace that can be used to store
+    any auxiliary files needed by the user (e.g., additional files to
+    include in the report).
+
     ARI_SOURCE_DIR
     The directory that contains the source code for a package.
 

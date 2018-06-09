@@ -102,6 +102,7 @@ if [ "${#packages[@]}" -eq 0 ]; then
 fi
 
 dist_dir="$project_dir/distribution"
+extras_dir="$project_dir/extras"
 
 if [ "$debug_level" -ge 1 ]; then
 	eecho "number of packages: ${#packages[@]}"
@@ -146,6 +147,8 @@ for package in "${packages[@]}"; do
 	saved_ifs="$IFS"
 	IFS=$'\ca'
 	generate_program=($(\
+	  ARI_WORKSPACE_DIR="$project_dir" \
+	  ARI_EXTRAS_DIR="$extras_dir" \
 	  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 	  ARI_BIN_DIR="$abs_cmd_dir" \
 	  ARI_DIST_DIR="$dist_dir" \
@@ -167,6 +170,8 @@ for package in "${packages[@]}"; do
 			eecho "Running ${generate_program[@]}"
 		fi
 		PATH="$PATH:$abs_cmd_dir" \
+		  ARI_WORKSPACE_DIR="$project_dir" \
+		  ARI_EXTRAS_DIR="$extras_dir" \
 		  ARI_ASSIGNMENT_DIR="$assignment_dir" \
 		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_DIST_DIR="$dist_dir" \
