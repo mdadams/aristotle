@@ -68,7 +68,8 @@ add_log()
 	fi
 	if [ "$length" -lt $inf_thresh ]; then
 		topdf_log_opts+=(-u "$upness")
-		topdf_log_opts+=(-f text-utf8)
+		#topdf_log_opts+=(-f text-utf8)
+		topdf_log_opts+=(-f text)
 		topdf_log_opts+=(-t "$title")
 		topdf_log_opts+=(-l)
 		topdf_log_opts+=(-i "$file")
