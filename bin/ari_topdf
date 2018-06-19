@@ -53,6 +53,12 @@ preprocess()
 	fi
 }
 
+is_valid_utf8()
+{
+	local in_file="$1"
+	recode UTF-8..Latin-1 < "$in_file" > /dev/null
+}
+
 is_valid_pdf()
 {
 	if [ $# -ne 1 ]; then
@@ -229,6 +235,13 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		esac
 	fi
 
+	if [ "$format" = "text" ]; then
+		is_valid_utf8 "$file"
+		if [ $? -eq 0 ]; then
+			format=text-utf8
+		fi
+	fi
+
 	if [ "$binary" -eq 0 ]; then
 		num_lines=$(count_lines "$file") || panic
 	else
@@ -242,6 +255,10 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 	if [ "$format" = pdf ]; then
 		is_valid_pdf "$file" || \
 		  panic "$file is not a valid PDF file"
+	fi
+	if [ "$format" = text-utf8 ]; then
+		is_valid_utf8 "$file" || \
+		  panic "$file is not a valid UTF8 file"
 	fi
 
 	a2ps_opts=()
