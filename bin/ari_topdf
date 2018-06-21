@@ -56,7 +56,7 @@ preprocess()
 is_valid_utf8()
 {
 	local in_file="$1"
-	recode UTF-8..Latin-1 < "$in_file" > /dev/null
+	recode UTF-8..Latin-1 < "$in_file" > /dev/null 2> /dev/null
 }
 
 is_valid_pdf()
