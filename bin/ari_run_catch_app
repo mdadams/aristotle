@@ -30,7 +30,16 @@ get_nth_word()
 
 quote_test_name()
 {
-	echo "$1" | sed -e 's/\]/\\]/g' | sed -e 's/\[/\\[/g'
+	# Escape the following characters with a backslash:
+	# asterisk, left/right square bracket, plus, comma
+	echo "$1" | \
+	  sed -e 's/\*/\\*/g' | \
+	  sed -e 's/\[/\\[/g' | \
+	  sed -e 's/\]/\\]/g' | \
+	  sed -e 's/\+/\\+/g' | \
+	  sed -e 's/,/\\,/g'
+	# sed -e 's/|/\\|/g'
+	# sed -e 's/\./\\./g'
 }
 
 usage()
@@ -168,6 +177,7 @@ cum_failed_assertions=0
 cum_passed_assertions=0
 cum_missing_summaries=0
 num_runs=0
+cum_extra_tests=0
 
 if [ "$run_individually" -ne 0 ]; then
 	tests=("${all_tests[@]}")
@@ -211,53 +221,115 @@ for test in "${tests[@]}"; do
 		# test cases:  6 |  5 passed | 1 failed
 		# assertions: 84 | 80 passed | 4 failed
 		# [blank line]
+		# It might also look like:
+		# test cases: 1 | 1 failed
+		# assertions: 4 | 4 failed
+		# [blank line]
 		tests_buffer=$(get_nth_last_line 3 "$console_file") || \
 		  panic "cannot get test cases summary line"
 		assertions_buffer=$(get_nth_last_line 2 "$console_file") || \
 		  panic "cannot get assertions summary line"
 		if [ "$debug_level" -ge 1 ]; then
+			eecho "=========="
 			eecho "$tests_buffer"
 			eecho "$assertions_buffer"
+			eecho "=========="
 		fi
+
+		# Check for text that generally resembles a test-results summary.
 		has_summary=1
-		echo "$tests_buffer" | grep -q \
-		  -e '^test cases:[[:space:]]\+[0-9]*[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+passed[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+failed$' || \
+		echo "$tests_buffer" | grep -q -E '^test cases:[[:space:]]+' || \
 		  has_summary=0
-		echo "$assertions_buffer" | grep -q \
-		  -e '^assertions:[[:space:]]\+[0-9]*[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+passed[[:space:]]\+|[[:space:]]\+[0-9]*[[:space:]]\+failed$' || \
+		echo "$assertions_buffer" | grep -q -E '^assertions:[[:space:]]+' || \
 		  has_summary=0
 
 		if [ "$has_summary" -ne 0 ]; then
-			total_tests=$(echo "$tests_buffer" | get_nth_word 3) || \
-			  panic "cannot get total tests"
-			passed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
-			  panic "cannot get passed tests"
-			failed_tests=$(echo "$tests_buffer" | get_nth_word 8) || \
-			  panic "cannot get failed tests"
-			total_assertions=$(echo "$assertions_buffer" | get_nth_word 2) || \
-			  panic "cannot get total assertions"
-			passed_assertions=$(echo "$assertions_buffer" | get_nth_word 4) || \
-			  panic "cannot get passed assertions"
-			failed_assertions=$(echo "$assertions_buffer" | get_nth_word 7) || \
-			  panic "cannot get failed assertions"
-			completed=1
-		else
-			completed=0
+
+			# Determine format of summary.
+			tests_format=
+			assertions_format=
+			echo "$tests_buffer" | grep -q \
+			  -E '^test cases:[[:space:]]+[0-9]*[[:space:]]+\|[[:space:]]+[0-9]*[[:space:]]+passed[[:space:]]+|[[:space:]]+[0-9]*[[:space:]]+failed$' && \
+			  tests_format=passed_failed
+			echo "$tests_buffer" | grep -q \
+			  -E '^test cases:[[:space:]]+[0-9]*[[:space:]]+\|[[:space:]]+[0-9]*[[:space:]]+failed$' && \
+			  tests_format=failed
+			echo "$assertions_buffer" | grep -q \
+			  -E '^assertions:[[:space:]]+[0-9]*[[:space:]]+\|[[:space:]]+[0-9]*[[:space:]]+passed[[:space:]]+|[[:space:]]+[0-9]*[[:space:]]+failed$' && \
+			  assertions_format=passed_failed
+			echo "$assertions_buffer" | grep -q \
+			  -E '^assertions:[[:space:]]+[0-9]*[[:space:]]+\|[[:space:]]+[0-9]*[[:space:]]+failed$' && \
+			  assertions_format=failed
+
+			# Extract test information from summary.
+			case "$tests_format" in
+			passed_failed)
+				total_tests=$(echo "$tests_buffer" | get_nth_word 3) || \
+				  panic "cannot get total tests"
+				passed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
+				  panic "cannot get passed tests"
+				failed_tests=$(echo "$tests_buffer" | get_nth_word 8) || \
+				  panic "cannot get failed tests"
+				;;
+			failed)
+				total_tests=$(echo "$tests_buffer" | get_nth_word 3) || \
+				  panic "cannot get total tests"
+				passed_tests=0
+				failed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
+				  panic "cannot get failed tests"
+				;;
+			*)
+				panic "unexpected tests summary format"
+				;;
+			esac
+
+			# Extract assertion information from summary.
+			case "$assertions_format" in
+			passed_failed)
+				total_assertions=$(echo "$assertions_buffer" | \
+				  get_nth_word 2) || \
+				  panic "cannot get total assertions"
+				passed_assertions=$(echo "$assertions_buffer" | \
+				  get_nth_word 4) || \
+				  panic "cannot get passed assertions"
+				failed_assertions=$(echo "$assertions_buffer" | \
+				  get_nth_word 7) || \
+				  panic "cannot get failed assertions"
+				;;
+			failed)
+				total_assertions=$(echo "$assertions_buffer" | \
+				  get_nth_word 2) || \
+				  panic "cannot get total assertions"
+				passed_assertions=0
+				failed_assertions=$(echo "$assertions_buffer" | \
+				  get_nth_word 4) || \
+				  panic "cannot get failed assertions"
+				;;
+			*)
+				panic "unexpected assertions summary format"
+				;;
+			esac
+
 		fi
+
 	else
 
 		# If all tests pass, then the output should resemble:
 		# All tests passed (723 assertions in 22 test cases)
 		# [blank line]
+		# The words assertions and cases may be singular.
+		# All tests passed (1 assertion in 1 test case)
 		buffer=$(get_nth_last_line 2 "$console_file") || \
 		  panic "cannot get status line"
 		if [ "$debug_level" -ge 1 ]; then
+			eecho "=========="
 			eecho "$buffer"
+			eecho "=========="
 		fi
 		has_summary=1
 		echo "$buffer" | \
 		  grep -q \
-		  -E '^All tests passed \([0-9]*[[:space:]]+assertions in[[:space:]]+[0-9]*[[:space:]]+test (cases|case)\)$' || \
+		  -E '^All tests passed \([0-9]*[[:space:]]+(assertions|assertion) in[[:space:]]+[0-9]*[[:space:]]+test (cases|case)\)$' || \
 		  has_summary=0
 		if [ "$has_summary" -ne 0 ]; then
 			buffer=$(echo "$buffer" | tr '()' '  ')
@@ -273,10 +345,15 @@ for test in "${tests[@]}"; do
 			panic "cannot parse summary of test results"
 		fi
 
-		completed=1
 	fi
 
 	if [ "$has_summary" -ne 0 ]; then
+		if [ "$run_individually" -ne 0 ]; then
+			if [ "$total_tests" -ne 1 ]; then
+				eecho "more than one test run per invocation for test $test"
+				cum_extra_tests=$((extra_tests + total_tests - 1))
+			fi
+		fi
 		cum_total_tests=$((cum_total_tests + total_tests))
 		cum_passed_tests=$((cum_passed_tests + passed_tests))
 		cum_failed_tests=$((cum_failed_tests + failed_tests))
@@ -287,15 +364,20 @@ for test in "${tests[@]}"; do
 		cum_missing_summaries=$((cum_missing_summaries + 1))
 	fi
 
-	if [ "$debug_level" -ge 1 ]; then
-		eecho "completed: $completed"
+	if [ "$debug_level" -ge 2 ]; then
+		eecho "=========="
+		eecho "test name: $test"
 		eecho "has summary: $has_summary"
-		eecho "total tests: $total_tests"
-		eecho "passed tests: $passed_tests"
-		eecho "failed tests: $failed_tests"
-		eecho "total assertions: $total_assertions"
-		eecho "passed assertions: $passed_assertions"
-		eecho "failed assertions: $failed_assertions"
+		if [ "$has_summary" -ne 0 ]; then
+			eecho "summary format: $tests_format $assertions_format"
+			eecho "total tests: $total_tests"
+			eecho "passed tests: $passed_tests"
+			eecho "failed tests: $failed_tests"
+			eecho "total assertions: $total_assertions"
+			eecho "passed assertions: $passed_assertions"
+			eecho "failed assertions: $failed_assertions"
+		fi
+		eecho "=========="
 	fi
 
 	if [ "$app_exit_status" -ne 0 ]; then
@@ -406,7 +488,7 @@ of the test results.
 FAIL (NO SUMMARY)
 Every time that the Catch2 test application was run, the application was
 terminated before being able to generate a summary of the test results.
-In this case, most test results are likely to be uknown.
+In this case, most test results are likely to be unknown.
 
 Note:
 If the Catch2 test application was forced to exit before processing all
@@ -425,6 +507,7 @@ SUMMARY OF TEST RESULTS
 =======================
 
 Status: $status_message
+Number of test cases: ${#all_tests[@]}
 Mode: $mode_message
 Test program invocations: $num_runs
 Missing summaries: $missing_summaries_message
@@ -433,6 +516,13 @@ Failed assertions: $failed_assertions_message
 Result: $result_message
 EOF
 [ $? -eq 0 ] || panic "output failed"
+
+if [ "$cum_extra_tests" -ne 0 ]; then
+	cat <<- EOF
+	WARNING: Some test cases were repeated (due to Catch2 bug?).
+	Repeated test cases: $cum_extra_tests
+	EOF
+fi
 
 ################################################################################
 # Cleanup
