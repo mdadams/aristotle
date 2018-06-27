@@ -28,6 +28,11 @@ get_nth_word()
 	awk -v n="$1" '{if (n <= NF) {print $n;} else {exit 1;}}' -
 }
 
+quote_test_name()
+{
+	echo "$1" | sed -e 's/\]/\\]/g' | sed -e 's/\[/\\[/g'
+}
+
 usage()
 {
 	echo "$@"
@@ -75,7 +80,7 @@ tests_file="$tmp_dir/tests"
 ################################################################################
 
 command=
-run_individually=0
+run_individually=1
 result=0
 result_file="$ARI_TEST_RESULT_FILE"
 timeout=
@@ -176,7 +181,7 @@ for test in "${tests[@]}"; do
 		app_args=()
 	else
 		app_args=()
-		app_args+=("$test")
+		app_args+=("$(quote_test_name "$test")")
 	fi
 
 	if [ -e "$console_file" ]; then
@@ -332,14 +337,14 @@ fi
 failed_tests_message="$cum_failed_tests/$cum_total_tests"
 failed_assertions_message="$cum_failed_assertions/$cum_total_assertions"
 missing_summaries_message="$cum_missing_summaries/$num_runs"
-if [ "$cum_failed_tests" -ne 0 ]; then
+if [ "$cum_missing_summaries" -gt 0 -o "$cum_failed_tests" -gt 0 ]; then
 	if [ "$cum_missing_summaries" -gt 0 ]; then
-		if [ "$cum_missing_summaries" -ge "$run_runs" ]; then
-			result_message="INC,($cum_failed_tests+$cum_missing_summaries)/$cum_total_tests,$cum_failed_assertions/$cum_total_assertions"
+		if [ "$cum_missing_summaries" -ge "$num_runs" ]; then
+			result_message="INC[$cum_missing_summaries/$num_runs],$cum_failed_tests/$cum_total_tests,$cum_failed_assertions/$cum_total_assertions"
 			status_message="FAIL (NO SUMMARY)"
 			exit_status=3
 		else
-			result_message="INC,($cum_failed_tests+$cum_missing_summaries)/$cum_total_tests,$cum_failed_assertions/$cum_total_assertions"
+			result_message="INC[$cum_missing_summaries/$num_runs],$cum_failed_tests/$cum_total_tests,$cum_failed_assertions/$cum_total_assertions"
 			status_message="FAIL (INCOMPLETE SUMMARY)"
 			exit_status=2
 		fi
@@ -357,6 +362,12 @@ fi
 if [ "$result" -ne 0 ]; then
 	echo "$result_message" > "$result_file" || \
 	  panic "cannot create result file"
+fi
+
+if [ "$run_individually" -ne 0 ]; then
+	mode_message="One test program invocation per test case"
+else
+	mode_message="One test program invocation for all test cases"
 fi
 
 ################################################################################
@@ -414,9 +425,12 @@ SUMMARY OF TEST RESULTS
 =======================
 
 Status: $status_message
-Failed tests: $failed_tests_message
-Failed assertions: $failed_assertions_message
+Mode: $mode_message
+Test program invocations: $num_runs
 Missing summaries: $missing_summaries_message
+Failed test cases: $failed_tests_message
+Failed assertions: $failed_assertions_message
+Result: $result_message
 EOF
 [ $? -eq 0 ] || panic "output failed"
 
