@@ -89,7 +89,7 @@ tests_file="$tmp_dir/tests"
 ################################################################################
 
 command=
-run_individually=1
+run_individually=0
 result=0
 result_file="$ARI_TEST_RESULT_FILE"
 timeout=
