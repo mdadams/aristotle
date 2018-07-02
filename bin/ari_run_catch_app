@@ -80,6 +80,7 @@ user="$whoami"
 host=$(hostname)
 tmp_dir=/tmp/ari_run_catch_app-$user@$host-$$
 console_file="$tmp_dir/console"
+error_file="$tmp_dir/error"
 log_file="$tmp_dir/log"
 debug_level=${ARI_DEBUG_LEVEL:-0}
 tests_file="$tmp_dir/tests"
@@ -185,6 +186,7 @@ else
 	tests=("__all_tests__")
 fi
 
+failed_test=()
 for test in "${tests[@]}"; do
 
 	if [ "$test" = "__all_tests__" ]; then
@@ -197,19 +199,23 @@ for test in "${tests[@]}"; do
 	if [ -e "$console_file" ]; then
 		rm -f "$console_file" || panic "cannot remove file $console_file"
 	fi
+	if [ -e "$error_file" ]; then
+		rm -f "$error_file" || panic "cannot remove file $error_file"
+	fi
+	#touch "$error_file"
 
 	# Run the test application.
 	if [ -n "$timeout" ]; then
 		# Run the test application with a timeout.
 		args=(-t "$timeout" -k 10 "$command" -r console "${app_args[@]}")
 		#echo "Running $ari_timeout ${args[@]}"
-		"$ari_timeout" "${args[@]}" > "$console_file" 2> /dev/null
+		"$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
 		app_exit_status=$?
 	else
 		# Run the test application without a timeout.
 		args=(-r console "${app_args[@]}")
 		#echo "Running $command ${args[@]}"
-		"$command" "${args[@]}" > "$console_file" 2> /dev/null
+		"$command" "${args[@]}" > "$console_file" 2> "$error_file"
 		app_exit_status=$?
 	fi
 	num_runs=$((num_runs + 1))
@@ -266,16 +272,16 @@ for test in "${tests[@]}"; do
 			passed_failed)
 				total_tests=$(echo "$tests_buffer" | get_nth_word 3) || \
 				  panic "cannot get total tests"
-				passed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
+				num_passed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
 				  panic "cannot get passed tests"
-				failed_tests=$(echo "$tests_buffer" | get_nth_word 8) || \
+				num_failed_tests=$(echo "$tests_buffer" | get_nth_word 8) || \
 				  panic "cannot get failed tests"
 				;;
 			failed)
 				total_tests=$(echo "$tests_buffer" | get_nth_word 3) || \
 				  panic "cannot get total tests"
-				passed_tests=0
-				failed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
+				num_passed_tests=0
+				num_failed_tests=$(echo "$tests_buffer" | get_nth_word 5) || \
 				  panic "cannot get failed tests"
 				;;
 			*)
@@ -289,10 +295,10 @@ for test in "${tests[@]}"; do
 				total_assertions=$(echo "$assertions_buffer" | \
 				  get_nth_word 2) || \
 				  panic "cannot get total assertions"
-				passed_assertions=$(echo "$assertions_buffer" | \
+				num_passed_assertions=$(echo "$assertions_buffer" | \
 				  get_nth_word 4) || \
 				  panic "cannot get passed assertions"
-				failed_assertions=$(echo "$assertions_buffer" | \
+				num_failed_assertions=$(echo "$assertions_buffer" | \
 				  get_nth_word 7) || \
 				  panic "cannot get failed assertions"
 				;;
@@ -300,8 +306,8 @@ for test in "${tests[@]}"; do
 				total_assertions=$(echo "$assertions_buffer" | \
 				  get_nth_word 2) || \
 				  panic "cannot get total assertions"
-				passed_assertions=0
-				failed_assertions=$(echo "$assertions_buffer" | \
+				num_passed_assertions=0
+				num_failed_assertions=$(echo "$assertions_buffer" | \
 				  get_nth_word 4) || \
 				  panic "cannot get failed assertions"
 				;;
@@ -337,10 +343,10 @@ for test in "${tests[@]}"; do
 			  panic "cannot get total assertions"
 			total_tests=$(echo "$buffer" | get_nth_word 7) || \
 			  panic "cannot get total tests"
-			passed_tests="$total_tests"
-			passed_assertions="$total_assertions"
-			failed_tests=0
-			failed_assertions=0
+			num_passed_tests="$total_tests"
+			num_passed_assertions="$total_assertions"
+			num_failed_tests=0
+			num_failed_assertions=0
 		else
 			panic "cannot parse summary of test results"
 		fi
@@ -353,14 +359,21 @@ for test in "${tests[@]}"; do
 				eecho "more than one test run per invocation for test $test"
 				cum_extra_tests=$((extra_tests + total_tests - 1))
 			fi
+			if [ "$num_failed_tests" -ne 0 ]; then
+				failed_tests+=("$test")
+			fi
 		fi
+
 		cum_total_tests=$((cum_total_tests + total_tests))
-		cum_passed_tests=$((cum_passed_tests + passed_tests))
-		cum_failed_tests=$((cum_failed_tests + failed_tests))
+		cum_passed_tests=$((cum_passed_tests + num_passed_tests))
+		cum_failed_tests=$((cum_failed_tests + num_failed_tests))
 		cum_total_assertions=$((cum_total_assertions + total_assertions))
-		cum_passed_assertions=$((cum_passed_assertions + passed_assertions))
-		cum_failed_assertions=$((cum_failed_assertions + failed_assertions))
+		cum_passed_assertions=$((cum_passed_assertions + num_passed_assertions))
+		cum_failed_assertions=$((cum_failed_assertions + num_failed_assertions))
 	else
+		if [ "$run_individually" -ne 0 ]; then
+			missing_summaries+=("$test")
+		fi
 		cum_missing_summaries=$((cum_missing_summaries + 1))
 	fi
 
@@ -371,11 +384,11 @@ for test in "${tests[@]}"; do
 		if [ "$has_summary" -ne 0 ]; then
 			eecho "summary format: $tests_format $assertions_format"
 			eecho "total tests: $total_tests"
-			eecho "passed tests: $passed_tests"
-			eecho "failed tests: $failed_tests"
+			eecho "passed tests: $num_passed_tests"
+			eecho "failed tests: $num_failed_tests"
 			eecho "total assertions: $total_assertions"
-			eecho "passed assertions: $passed_assertions"
-			eecho "failed assertions: $failed_assertions"
+			eecho "passed assertions: $num_passed_assertions"
+			eecho "failed assertions: $num_failed_assertions"
 		fi
 		eecho "=========="
 	fi
@@ -390,19 +403,26 @@ for test in "${tests[@]}"; do
 	fi
 
 	if [ "$has_summary" -eq 0 ]; then
-		cat <<- EOF
-		WARNING:
-		The Catch2 test application was violently terminated before
-		generating the summary of the test results.
-		The most likely cause is that the code being tested trashed
-		the stack (e.g., stack overflow or stack corruption).
-
-		EOF
-		[ $? -eq 0 ] || panic "output failed"
+		#cat <<- EOF
+		#WARNING:
+		#The Catch2 test application was violently terminated before
+		#generating the summary of the test results.
+		#The most likely cause is that the code being tested trashed
+		#the stack (e.g., stack overflow or stack corruption).
+		#
+		#EOF
+		#[ $? -eq 0 ] || panic "output failed"
+		echo "WARNING: NO TEST-RESULTS SUMMARY WAS GENERATED" || \
+		  panic "echo failed"
 	fi
 
 	if [ "$app_exit_status" -ne 0 ]; then
+		echo "==== START OF STANDARD OUTPUT ====" || panic "echo failed"
 		cat "$console_file" || panic "cannot copy log file"
+		echo "==== END OF STANDARD OUTPUT ====" || panic "echo failed"
+		echo "==== START OF STANDARD ERROR ====" || panic "echo failed"
+		cat "$error_file" || panic "cannot copy error file"
+		echo "==== END OF STANDARD ERROR ====" || panic "echo failed"
 	fi
 
 done
@@ -416,9 +436,8 @@ if [ "$debug_level" -ge 1 ]; then
 	eecho "failed assertions: $cum_failed_assertions"
 fi
 
-failed_tests_message="$cum_failed_tests/$cum_total_tests"
-failed_assertions_message="$cum_failed_assertions/$cum_total_assertions"
-missing_summaries_message="$cum_missing_summaries/$num_runs"
+total_tests_message="$cum_total_tests"
+total_assertions_message="$cum_total_assertions"
 if [ "$cum_missing_summaries" -gt 0 -o "$cum_failed_tests" -gt 0 ]; then
 	if [ "$cum_missing_summaries" -gt 0 ]; then
 		if [ "$cum_missing_summaries" -ge "$num_runs" ]; then
@@ -439,6 +458,10 @@ else
 	result_message="PASS,0/$cum_total_tests,0/$cum_total_assertions"
 	status_message="PASS"
 	exit_status=0
+fi
+if [ "$cum_missing_summaries" -ne 0 ]; then
+	total_tests_message="$total_tests_message (INCOMPLETE)"
+	total_assertions_message="$total_assertions_message (INCOMPLETE)"
 fi
 
 if [ "$result" -ne 0 ]; then
@@ -507,15 +530,34 @@ SUMMARY OF TEST RESULTS
 =======================
 
 Status: $status_message
-Number of test cases: ${#all_tests[@]}
 Mode: $mode_message
+Number of test cases: ${#all_tests[@]}
 Test program invocations: $num_runs
-Missing summaries: $missing_summaries_message
-Failed test cases: $failed_tests_message
-Failed assertions: $failed_assertions_message
-Result: $result_message
+Missing test-result summaries: $cum_missing_summaries/$num_runs
+Total test cases: $total_tests_message
+Passed test cases: $cum_passed_tests/$cum_total_tests
+Failed test cases: $cum_failed_tests/$cum_total_tests
+Total assertions: $total_assertions_message
+Passed assertions: $cum_passed_assertions/$cum_total_assertions
+Failed assertions: $cum_failed_assertions/$cum_total_assertions
 EOF
 [ $? -eq 0 ] || panic "output failed"
+
+if [ "${#missing_summaries[@]}" -ne 0 ]; then
+	echo "The following tests did not produce a summary:" || panic "echo failed"
+	for test in "${missing_summaries[@]}"; do
+		echo "    $test" || panic "echo failed"
+	done
+fi
+
+if [ "${#failed_tests[@]}" -ne 0 ]; then
+	echo "The following tests failed:" || panic "echo failed"
+	for test in "${failed_tests[@]}"; do
+		echo "    $test" || panic "echo failed"
+	done
+fi
+
+echo "Result: $result_message" || panic "echo failed"
 
 if [ "$cum_extra_tests" -ne 0 ]; then
 	cat <<- EOF
@@ -530,6 +572,7 @@ fi
 
 rm -f "$tests_file"
 rm -f "$console_file"
+rm -f "$error_file"
 rmdir "$tmp_dir"
 
 ################################################################################
