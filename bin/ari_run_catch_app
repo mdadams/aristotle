@@ -209,13 +209,15 @@ for test in "${tests[@]}"; do
 		# Run the test application with a timeout.
 		args=(-t "$timeout" -k 10 "$command" -r console "${app_args[@]}")
 		#echo "Running $ari_timeout ${args[@]}"
-		"$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
+		LIBC_FATAL_STDERR_=1 \
+		  "$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
 		app_exit_status=$?
 	else
 		# Run the test application without a timeout.
 		args=(-r console "${app_args[@]}")
 		#echo "Running $command ${args[@]}"
-		"$command" "${args[@]}" > "$console_file" 2> "$error_file"
+		LIBC_FATAL_STDERR_=1 \
+		  "$command" "${args[@]}" > "$console_file" 2> "$error_file"
 		app_exit_status=$?
 	fi
 	num_runs=$((num_runs + 1))
