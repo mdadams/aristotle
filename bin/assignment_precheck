@@ -34,32 +34,47 @@ usage()
 	cat <<- EOF
 	Usage: $0 [options] assignment_submission_input_source
 
-	Description:
+	Description
+	===========
+
 	Perform a basic sanity check of the assignment submission associated
 	with the specified assignment submission input source (e.g., the
 	URL of a Git repository, the name of a Zip or gzipped-Tar archive file,
 	or the name of a directory).
 
-	Options:
-	-D debug_level
-	    Set the debug level to debug_level.
-	-b branch
-	    Set the branch (or commit) that is to be checked to branch.
+	Options
+	=======
+
+	-r \$report_file
+	    Specify an output file for the \$report_file.
+	-b \$branch
+	    Set the branch (or commit) that is to be checked to \$branch.
 	    The default value is $default_branch.
-	-C
-	    Disable cleanup (i.e., disable removal of temporary directory).
-	    This may be useful for debugging.
-	-v
-	    Increase the verbosity level of output.
-	-r report_file
-	    Specify an output file for the report.
-	-t input_type
-	    Set the input type to input_type.
+	-d \$workspace_directory
+	    Set the workspace directory to \$workspace_directory.
+	    This directory must not already exist.
+	    If no workspace directory is specified, a temporary one is created
+	    (which is removed before exiting).
+	-t \$input_type
+	    Set the input type to \$input_type.
 	    By default, the input type is deduced based on the suffix used
 	    in the name of the input source.
 	    For example, if the name of the input source ends with the suffix
 	    ".git", the input type set to a Git repository, and if the name
 	    ends with the suffix ".zip", the input type is set to a Zip archive.
+	-v
+	    Increase the verbosity level of output.
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+
+	Workspace Organization
+	======================
+
+	For detailed information about the organization of files under
+	in a workspace directory, refer to the section titled
+	"Workspace Organization" in the document located at:
+
+	    https://github.com/mdadams/aristotle/blob/master/doc/manual.txt
 	EOF
 	exit 2
 }
@@ -76,13 +91,13 @@ ari_precheck="$cmd_dir/ari_precheck"
 ari_mktemp="$cmd_dir/ari_mktemp"
 
 verbose=0
-cleanup=1
 branch="$default_branch"
 debug_level=${ARI_DEBUG_LEVEL:-0}
 report_file=
 in_type=
+out_dir=
 
-while getopts CD:b:vr:t: option; do
+while getopts CD:b:vr:t:d: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -90,12 +105,12 @@ while getopts CD:b:vr:t: option; do
 		branch="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
-	C)
-		cleanup=0;;
 	r)
 		report_file="$OPTARG";;
 	t)
 		in_type="$OPTARG";;
+	d)
+		out_dir="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -106,19 +121,29 @@ if [ $# -ne 1 ]; then
 	usage "no repository URL specified"
 fi
 
+if [ -n "$out_dir" ]; then
+	if [ -e "$out_dir" ]; then
+		usage "output directory already exists $out_dir"
+	fi
+fi
+
 input="$1"
 
-tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
-  panic "cannot make temporary directory"
+cleanup=0
+if [ -z "$out_dir" ]; then
+	out_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+	  panic "cannot make temporary directory"
+	cleanup=1
+fi
 
 if [ "$verbose" -ge 1 ]; then
-	echo "temporary directory: $tmp_dir"
+	echo "output directory: $out_dir"
 fi
 
 options=()
 options+=(-D "$debug_level")
 options+=(-v)
-options+=(-d "$tmp_dir")
+options+=(-d "$out_dir")
 if [ -n "$in_type" ]; then
 	options+=(-t "$in_type")
 fi
@@ -132,15 +157,15 @@ fi
 command_status=$?
 
 if [ "$command_status" -eq 0 -a -n "$report_file" ]; then
-	cp $tmp_dir/report.pdf "$report_file"
+	cp $out_dir/report.pdf "$report_file"
 	if [ $? -ne 0 ]; then
 		echo "cannot copy report file"
 	fi
 	command_status=1
 fi
 
-if [ "$cleanup" -ne 0 -a -d "$tmp_dir" ]; then
-	rm -rf "$tmp_dir" || echo "cannot remove temporary directory"
+if [ "$cleanup" -ne 0 -a -d "$out_dir" ]; then
+	rm -rf "$out_dir" || echo "cannot remove temporary directory"
 fi
 
 exit "$command_status"
