@@ -23,6 +23,9 @@
 # 
 # __END_OF_LICENSE__
 
+# Reference: http://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html#timeout-invocation
+# Reference: http://www.gnu.org/software/coreutils/manual/html_node/env-invocation.html#env-invocation
+
 usage()
 {
 	echo "$@"
@@ -36,11 +39,23 @@ usage()
 	    The default value for \$signal is SIGTERM.
 	-t \$timeout
 	    Send a signal to the process if it is still running after a period of \$timeout.
+	    The default value of \$timeout is infinity (i.e., the program is
+	    run without a timeout).
 	-k \$timeout
 	    Send a SIGKILL signal to the process if it is still running after a
 	    period of \$timeout elapses from the initial SIGTERM signal being sent.
 	-v
 	    Increase the verbosity of the output.
+	-E
+	    Set the environment variable LIBC_FATAL_STDERR_ to 1.
+
+	Exit Status:
+	124 program timed out
+	125 underlying timeout/env command failed
+	126 program is found but cannot be invoked
+	127 program cannot be found
+	137 program sent KILL signal
+	exit status of program otherwise
 	EOF
 	exit 2
 }
@@ -51,8 +66,9 @@ debug_level=${ARI_DEBUG_LEVEL:-0}
 timeout=
 kill_after_timeout=10
 verbose=0
+environment=()
 
-while getopts t:D:vk:s: option; do
+while getopts t:D:vk:s:E option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -64,6 +80,9 @@ while getopts t:D:vk:s: option; do
 		kill_after_timeout="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
+	E)
+		environment+=("LIBC_FATAL_STDERR_=1")
+		;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -84,18 +103,18 @@ if [ -n "$timeout" ]; then
 	if [ "$allow_break" -ne 0 ]; then
 		pid=
 		trap '[ -n "$pid" ] && kill -INT -$pid' INT
-		timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
+		env "${environment[@]}" timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
 		  "$program_file" "${program_options[@]}" &
 		pid=$!
 		wait $pid
 		status=$?
 	else
-		timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
+		env "${environment[@]}" timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
 		  "$program_file" "${program_options[@]}"
 		status=$?
 	fi
 else
-	"$program_file" "${program_options[@]}"
+	env "${environment[@]}" "$program_file" "${program_options[@]}"
 	status=$?
 fi
 

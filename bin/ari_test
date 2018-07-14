@@ -59,6 +59,7 @@ ari_calc="$abs_cmd_dir/ari_calc"
 ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
 
 reproducible=0
+#reproducible_report=0
 project_dir=$("$ari_locate" -q) || project_dir=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
@@ -264,8 +265,11 @@ for package in "${packages[@]}"; do
 		  -a "$project" "package-$package/test-$target/timeout")) || \
 		  panic "cannot get test timeout"
 
+		test_program_buf=$(type -P "${test_program[0]}") || \
+		panic "cannot find test program ${test_program[@]}"
+		test_program[0]="$test_program_buf"
 		if [ ! -x "${test_program[0]}" ]; then
-			panic "cannot find test program ${test_program[@]}"
+			panic "cannot execute test program ${test_program[@]}"
 		fi
 		if [ "$debug_level" -ge 1 ]; then
 			eecho "Running ${test_program[@]}"

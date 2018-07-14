@@ -223,21 +223,28 @@ for test in "${tests[@]}"; do
 	#touch "$error_file"
 
 	# Run the test application.
+#	if [ -n "$timeout" ]; then
+#		# Run the test application with a timeout.
+#		args=(-t "$timeout" -k 10 "$command" -r console "${app_args[@]}")
+#		#echo "Running $ari_timeout ${args[@]}"
+#		LIBC_FATAL_STDERR_=1 \
+#		  "$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
+#		app_exit_status=$?
+#	else
+#		# Run the test application without a timeout.
+#		args=(-r console "${app_args[@]}")
+#		#echo "Running $command ${args[@]}"
+#		LIBC_FATAL_STDERR_=1 \
+#		  "$command" "${args[@]}" > "$console_file" 2> "$error_file"
+#		app_exit_status=$?
+#	fi
+	args=()
+	args+=(-E)
 	if [ -n "$timeout" ]; then
-		# Run the test application with a timeout.
-		args=(-t "$timeout" -k 10 "$command" -r console "${app_args[@]}")
-		#echo "Running $ari_timeout ${args[@]}"
-		LIBC_FATAL_STDERR_=1 \
-		  "$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
-		app_exit_status=$?
-	else
-		# Run the test application without a timeout.
-		args=(-r console "${app_args[@]}")
-		#echo "Running $command ${args[@]}"
-		LIBC_FATAL_STDERR_=1 \
-		  "$command" "${args[@]}" > "$console_file" 2> "$error_file"
-		app_exit_status=$?
+		args+=(-t "$timeout" -k 10)
 	fi
+	args+=("$command" -r console "${app_args[@]}")
+	"$ari_timeout" "${args[@]}" > "$console_file" 2> "$error_file"
 	num_runs=$((num_runs + 1))
 
 	if [ "$app_exit_status" -ne 0 ]; then

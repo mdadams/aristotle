@@ -145,6 +145,25 @@ while [ $# -gt 0 ]; do
 		fi
 		;;
 
+	touch)
+		if [ $# -lt 1 ]; then
+			panic "no file specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		spec="$1"
+		shift 1
+		path=$(get_nth_word 1 "$spec") || panic
+		target_path="$cur_dir/$path"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "touching $target_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			touch "$target_path" || panic "cannot touch file"
+		fi
+		;;
+
 	replace)
 		if [ $# -lt 1 ]; then
 			panic "no source/destination file specified"
