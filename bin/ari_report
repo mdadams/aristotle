@@ -127,6 +127,7 @@ unique_id="$user_name@$host_name@$$"
 tmp_dir_template="/tmp/ari_report-$unique_id-XXXXXXXX"
 
 reproducible=0
+reproducible_report=0
 cleanup=1
 project_dir=$("$ari_locate" -q) || project_dir=
 debug_level=${ARI_DEBUG_LEVEL:-0}
@@ -135,10 +136,12 @@ packages=()
 skip_unavailable=0
 skip_optional=0
 
-while getopts CORD:d:o:p:vu option; do
+while getopts CORD:d:o:p:vur option; do
 	case "$option" in
 	R)
 		reproducible=1;;
+	r)
+		reproducible_report=1;;
 	D)
 		debug_level="$OPTARG";;
 	d)
@@ -317,7 +320,7 @@ for package in "${packages[@]}"; do
 		print_status "$reproducible" "$package" configure "---" \
 		  "$configure_status" "$configure_time" "" "$configure_log_length"
 	fi
-	print_status "$reproducible" "$package" configure "---" \
+	print_status "$reproducible_report" "$package" configure "---" \
 	  "$configure_status" "$configure_time" "" "$configure_log_length" \
 	  >> "$summary_1_file"
 	if [ "$configure_status" -ne 0 ]; then
@@ -351,8 +354,8 @@ for package in "${packages[@]}"; do
 				print_status "$reproducible" "$package" "build" "$target" "" \
 				  "" "" ""
 			fi
-			print_status "$reproducible" "$package" "build" "$target" "" "" \
-			  "" "" >> "$summary_1_file"
+			print_status "$reproducible_report" "$package" "build" "$target" \
+			  "" "" "" "" >> "$summary_1_file"
 			continue
 		fi
 
@@ -366,7 +369,7 @@ for package in "${packages[@]}"; do
 			print_status "$reproducible" "$package" "build" "$target" \
 			  "$build_status" "$build_time" "" "$build_log_length"
 		fi
-		print_status "$reproducible" "$package" "build" "$target" \
+		print_status "$reproducible_report" "$package" "build" "$target" \
 		  "$build_status" "$build_time" "" "$build_log_length" \
 		  >> "$summary_1_file"
 
@@ -417,7 +420,7 @@ for package in "${packages[@]}"; do
 				print_status "$reproducible" "$package" "test" "$target" \
 				  "D" "" "" ""
 			fi
-			print_status "$reproducible" "$package" "test" "$target" \
+			print_status "$reproducible_report" "$package" "test" "$target" \
 			  "D" "" "" "" >> "$summary_1_file"
 			continue
 		fi
@@ -440,17 +443,18 @@ for package in "${packages[@]}"; do
 				print_status "$reproducible" "$package" "test" "$target" \
 				  "M" "" "" ""
 			fi
-			print_status "$reproducible" "$package" "test" "$target" \
+			print_status "$reproducible_report" "$package" "test" "$target" \
 			  "M" "" "" "" >> "$summary_1_file"
 			continue
 		fi
 
 		if [ ! -f "$test_status_file" ]; then
 			if [ "$verbose" -ge 1 ]; then
-				print_status "$reproducible" "$package" "test" "$target" "" "" "" ""
+				print_status "$reproducible" "$package" "test" "$target" "" \
+				  "" "" ""
 			fi
-			print_status "$reproducible" "$package" "test" "$target" "" "" "" "" \
-			  >> "$summary_1_file"
+			print_status "$reproducible_report" "$package" "test" "$target" \
+			  "" "" "" "" >> "$summary_1_file"
 			continue
 		fi
 
@@ -468,16 +472,17 @@ for package in "${packages[@]}"; do
 			test_result=""
 		fi
 		if [ "$verbose" -ge 1 ]; then
-			print_status "$reproducible" "$package" "test" "$target" "$test_status" \
-			  "$test_time" "$test_result" "$test_log_length"
+			print_status "$reproducible" "$package" "test" "$target" \
+			  "$test_status" "$test_time" "$test_result" "$test_log_length"
 		fi
 		print_status \
-		  "$reproducible" "$package" "test" "$target" "$test_status" \
+		  "$reproducible_report" "$package" "test" "$target" "$test_status" \
 		  "$test_time" "$test_result" "$test_log_length" \
 		  >> "$summary_1_file"
 
 		if [ "$test_status" -ne 0 ]; then
-			add_log "$test_log_file" "$test_log_length" "Log: $package test $target"
+			add_log "$test_log_file" "$test_log_length" \
+			  "Log: $package test $target"
 		fi
 
 	done

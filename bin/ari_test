@@ -59,7 +59,6 @@ ari_calc="$abs_cmd_dir/ari_calc"
 ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
 
 reproducible=0
-#reproducible_report=0
 project_dir=$("$ari_locate" -q) || project_dir=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0

@@ -69,7 +69,6 @@ unique_id="$user_name@$host_name@$$"
 tmp_dir_template="/tmp/ari_build-$unique_id-XXXXXXXX"
 
 reproducible=0
-reproducible_report=0
 cleanup=1
 build_tool=make
 force_clean=0
@@ -410,7 +409,7 @@ for package in "${packages[@]}"; do
 			  "$configure_status" "$configure_time" "" "$configure_log_length"
 		fi
 		print_status \
-		  "$reproducible_report" "$package" "configure" "---" \
+		  "$reproducible" "$package" "configure" "---" \
 		  "$configure_status" "$configure_time" "" "$configure_log_length" \
 		  >> "$summary_1_file"
 		if [ "$configure_status" -ne 0 ]; then
@@ -623,7 +622,7 @@ for package in "${packages[@]}"; do
 			print_status "$reproducible" "$package" "build" "$target" \
 			  "$build_status" "$build_time" "" "$build_log_length"
 		fi
-		print_status "$reproducible_report" "$package" "build" "$target" \
+		print_status "$reproducible" "$package" "build" "$target" \
 		  "$build_status" "$build_time" "" "$build_log_length" \
 		  >> "$summary_1_file"
 		if [ "$build_status" -ne 0 ]; then
