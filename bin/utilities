@@ -322,7 +322,10 @@ print_status()
 			info="? (manual)"
 		elif [ "$status" = "0" ]; then
 			info="OK"
-			if [ -n "$result" -a "$reproducible" -eq 0 ]; then
+			#if [ -n "$result" -a "$reproducible" -eq 0 ]; then
+			#	info_items+=("${result}")
+			#fi
+			if [ -n "$result" ]; then
 				info_items+=("${result}")
 			fi
 			if [ "$reproducible" -eq 0 ]; then
