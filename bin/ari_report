@@ -23,6 +23,22 @@
 # 
 # __END_OF_LICENSE__
 
+cmd_dir=$(dirname "$0") || exit 1
+abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
+source "$cmd_dir/utilities" || exit 1
+#etc_dir="$cmd_dir/../etc"
+
+get_tmp_file()
+{
+	if [ $# -ne 1 ]; then
+		return 1
+	fi
+	local name="$1"
+	local tmp_file="$tmp_dir/tmp-${name}-${tmp_file_no}"
+	#eecho "$tmp_file"
+	echo "$tmp_file"
+}
+
 indent_text()
 {
 	if [ $# -ne 1 ]; then
@@ -50,7 +66,7 @@ add_log()
 	local file="$1"
 	local length="$2"
 	local title="$3"
-	local lines_per_page=75
+	local lines_per_page=62
 
 	# Two-up threshold.
 	local big_thresh=$((4 * lines_per_page))
@@ -86,7 +102,8 @@ add_log()
 
 		EOF
 		[ $? -eq 0 ] || return 1
-		"$ari_headtail" -h "$big_thresh" -t "$big_thresh" < "$file" \
+		local thresh=$((big_thresh / 2))
+		"$ari_headtail" -h "$thresh" -t "$thresh" < "$file" \
 		  >> "$tmp_file" || return 1
 		topdf_log_opts+=(-u 1)
 		topdf_log_opts+=(-f text)
@@ -125,16 +142,12 @@ usage()
 	exit 2
 }
 
-cmd_dir=$(dirname "$0") || exit 1
-abs_cmd_dir=$(readlink -f "$cmd_dir") || exit 1
-source "$cmd_dir/utilities" || exit 1
-#etc_dir="$cmd_dir/../etc"
-
 ari_info="$abs_cmd_dir/ari_info"
 ari_locate="$abs_cmd_dir/ari_locate"
 ari_mktemp="$abs_cmd_dir/ari_mktemp"
 ari_relpath="$abs_cmd_dir/ari_relpath"
 ari_headtail="$abs_cmd_dir/ari_headtail"
+ari_textpreproc="$abs_cmd_dir/ari_textpreproc"
 topdf="$abs_cmd_dir/ari_topdf"
 
 user_name=`whoami` || panic "cannot get user name"
@@ -287,6 +300,10 @@ for package in "${packages[@]}"; do
 	configure_log_file="$configure_dir/log"
 	configure_time_file="$configure_dir/time"
 
+	tmp_configure_log_file=$(get_tmp_file configure) || \
+	  panic "cannot get temporary file"
+	tmp_file_no=$((tmp_file_no + 1))
+
 	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
 	  panic "cannot get optional"
 
@@ -310,9 +327,11 @@ for package in "${packages[@]}"; do
 	test_targets=($("$ari_info" -a "$project" package-"$package"/tests)) || \
 	  panic "cannot get test targets"
 
+	"$ari_textpreproc" < "$configure_log_file" > "$tmp_configure_log_file" || \
+	  panic "cannot process log file"
 	configure_status=$(cat "$configure_status_file") || \
 	  panic "cannot get configure status"
-	configure_log_length=$(count_lines "$configure_log_file") || \
+	configure_log_length=$(count_lines "$tmp_configure_log_file") || \
 	  panic "cannot get log length"
 	configure_time=$(cat "$configure_time_file") || \
 	  panic "cannot get time"
@@ -342,7 +361,7 @@ for package in "${packages[@]}"; do
 	  "$configure_status" "$configure_time" "" "$configure_log_length" \
 	  >> "$summary_1_file"
 	if [ "$configure_status" -ne 0 ]; then
-		add_log "$configure_log_file" "$configure_log_length" \
+		add_log "$tmp_configure_log_file" "$configure_log_length" \
 		  "Log: $package configure"
 	fi
 
@@ -356,6 +375,10 @@ for package in "${packages[@]}"; do
 		build_log_file="$build_dir/log"
 		build_status_file="$build_dir/status"
 		build_time_file="$build_dir/time"
+
+		tmp_build_log_file=$(get_tmp_file build) || \
+		  panic "cannot get temporary file"
+		tmp_file_no=$((tmp_file_no + 1))
 
 		target_name=$("$ari_info" \
 		  -a "$project" package-"$package"/build-"$target"/name) || \
@@ -377,9 +400,11 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 
+		"$ari_textpreproc" < "$build_log_file" > "$tmp_build_log_file" || \
+		  panic "cannot process log file"
 		build_status=$(cat "$build_status_file") || \
 		  panic "cannot get build status"
-		build_log_length=$(count_lines "$build_log_file") || \
+		build_log_length=$(count_lines "$tmp_build_log_file") || \
 		  panic "cannot get build log length"
 		build_time=$(cat "$build_time_file") || \
 		  panic "cannot get build time"
@@ -392,7 +417,7 @@ for package in "${packages[@]}"; do
 		  >> "$summary_1_file"
 
 		if [ "$build_status" -ne 0 ]; then
-			add_log "$build_log_file" "$build_log_length" \
+			add_log "$tmp_build_log_file" "$build_log_length" \
 			  "Log: $package build $target"
 		fi
 
@@ -409,6 +434,10 @@ for package in "${packages[@]}"; do
 		test_status_file="$test_dir/status"
 		test_time_file="$test_dir/time"
 		test_result_file="$test_dir/result"
+
+		tmp_test_log_file=$(get_tmp_file test) || \
+		  panic "cannot get temporary file"
+		tmp_file_no=$((tmp_file_no + 1))
 
 		optional=($("$ari_info" \
 		  -a "$project" package-"$package"/test-$target/optional)) || \
@@ -476,9 +505,11 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 
+		"$ari_textpreproc" < "$test_log_file" > "$tmp_test_log_file" || \
+		  panic "cannot process log file"
 		test_status=$(cat "$test_status_file") || \
 		  panic "cannot get test status"
-		test_log_length=$(count_lines "$test_log_file") || \
+		test_log_length=$(count_lines "$tmp_test_log_file") || \
 		  panic "cannot get test log length"
 		test_time=$(cat "$test_time_file") || \
 		  panic "cannot get test time"
@@ -499,7 +530,7 @@ for package in "${packages[@]}"; do
 		  >> "$summary_1_file"
 
 		if [ "$test_status" -ne 0 ]; then
-			add_log "$test_log_file" "$test_log_length" \
+			add_log "$tmp_test_log_file" "$test_log_length" \
 			  "Log: $package test $target"
 		fi
 

@@ -1,0 +1,87 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+count_lines()
+{
+	awk 'END {print NR;}' -
+}
+
+is_valid_utf8()
+{
+	recode UTF-8..Latin-1 > /dev/null 2> /dev/null
+}
+
+user=$(whoami) || panic "cannot get user name"
+host=$(hostname) || panic "cannot get host name"
+tmp_dir="/tmp/ari_textpreproc-$user@$host-$$"
+
+max_columns=80
+
+while getopts Rc: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	c)
+		max_columns="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+mkdir -p "$tmp_dir" || \
+  panic "cannot make temporary directory"
+
+tmp_file_1="$tmp_dir/file_1"
+tmp_file_2="$tmp_dir/file_2"
+tmp_file="$tmp_file_1"
+
+cat > "$tmp_file_1" || \
+  panic "cannot get input"
+tmp_file="$tmp_file_1"
+
+num_lines=$(count_lines < "$tmp_file") || \
+  panic "cannot determine number of lines"
+
+if [ "$num_lines" -eq 0 ]; then
+	exit 0
+fi
+
+utf8=1
+is_valid_utf8 < "$tmp_file" || utf8=0
+if [ "$utf8" -ne 0 ]; then
+	# Convert from UTF-8 to Latin-1 encoding.
+	recode UTF-8..Latin-1 < "$tmp_file" > "$tmp_file_2" || \
+	  panic "cannot convert character encoding"
+	tmp_file="$tmp_file_2"
+fi
+
+fold -w "$max_columns" -s < "$tmp_file" || panic "cannot wrap lines"
+
+rm -rf "$tmp_dir" || echo "warning: cannot remove temporary directory $tmp_dir"
+
+exit 0

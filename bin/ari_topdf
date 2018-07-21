@@ -203,7 +203,7 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 	numbering="${numbering_tab[$file_no]}"
 	language="${language_tab[$file_no]}"
 
-	tmp_file="${base_name}"$file_no.pdf
+	tmp_pdf_file="${base_name}"$file_no.pdf
 
 	case "$file" in
 	*.pdf)
@@ -302,7 +302,7 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		cat "$file" | preprocess | \
 		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  "$ps2pdf_program" - - > "$tmp_file" || \
+		  "$ps2pdf_program" - - > "$tmp_pdf_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	text)
@@ -320,15 +320,15 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		cat "$file" | \
 		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  "$ps2pdf_program" - - > "$tmp_file" || \
+		  "$ps2pdf_program" - - > "$tmp_pdf_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	pdf)
-		cp "$file" "$tmp_file" || panic "cannot copy file"
+		cp "$file" "$tmp_pdf_file" || panic "cannot copy file"
 		;;
 	esac
 
-	tmp_files+=("$tmp_file")
+	tmp_files+=("$tmp_pdf_file")
 
 done
 
