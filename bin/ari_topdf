@@ -48,7 +48,6 @@ preprocess()
 		"$recode_program" UTF-8..Latin-1
 	else
 		# The recode command is not available.
-		#cat
 		return 1
 	fi
 }

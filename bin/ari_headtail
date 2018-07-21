@@ -1,0 +1,82 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+usage()
+{
+	cat <<- EOF
+	Usage
+	=====
+
+	$0 [options]
+
+	Description
+	===========
+
+	Extracts a specified number of lines from the beginning and end of a
+	text stream read from standard input, writing the extracted lines to
+	standard output.
+
+	Options
+	=======
+
+	-h \$head_count
+	    Set the number of lines to include from the beginning of the stream
+	    to \$head_count.
+	-t \$tail_count
+	    Set the number of lines to include from the end of the stream to
+	    \$tail_count
+	-n \$count
+	    Set the number of lines to include from each of the beginning and
+	    end of the stream to \$count.
+	EOF
+	exit 2
+}
+
+num_head=1
+num_tail=1
+
+while getopts HD:h:t: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	h)
+		num_head="$OPTARG";;
+	t)
+		num_tail="$OPTARG";;
+	n)
+		num_head="$OPTARG"; num_tail="$OPTARG";;
+	H|*)
+		usage "invalid option $option";;
+	esac
+done
+shift $(($OPTIND - 1))
+
+separator="================================================================================"
+
+echo "The first $num_head line(s) followed by the last $num_tail line(s):"
+echo "$separator"
+sed -ne'1,'"$num_head"'{p;b};:a;$p;N;'"$((num_head + num_tail + 1))"',$D;ba' | \
+  sed -e "$((num_head + 1))"' i '"$separator"
+

@@ -75,8 +75,24 @@ add_log()
 		topdf_log_opts+=(-i "$file")
 	else
 		# NOTE: Use truncated log here.
-		:
-		#message="(Log file with details is too large to print [$build_log_file_length lines].)"
+		local tmp_file="$tmp_dir/tmp_file_${tmp_file_no}"
+		tmp_file_no=$((tmp_file_no + 1))
+		tmp_files+=("$tmp_file")
+		cat > "$tmp_file" <<- EOF
+		WARNING:
+		The log file is $length lines in length.
+		This is too long to include in full.
+		Therefore, only part of the log file is provided.
+
+		EOF
+		[ $? -eq 0 ] || return 1
+		"$ari_headtail" -h "$big_thresh" -t "$big_thresh" < "$file" \
+		  >> "$tmp_file" || return 1
+		topdf_log_opts+=(-u 1)
+		topdf_log_opts+=(-f text)
+		topdf_log_opts+=(-t "$title")
+		topdf_log_opts+=(-l)
+		topdf_log_opts+=(-i "$tmp_file")
 	fi
 	return 0
 }
@@ -118,6 +134,7 @@ ari_info="$abs_cmd_dir/ari_info"
 ari_locate="$abs_cmd_dir/ari_locate"
 ari_mktemp="$abs_cmd_dir/ari_mktemp"
 ari_relpath="$abs_cmd_dir/ari_relpath"
+ari_headtail="$abs_cmd_dir/ari_headtail"
 topdf="$abs_cmd_dir/ari_topdf"
 
 user_name=`whoami` || panic "cannot get user name"
@@ -200,6 +217,7 @@ if [ "${#packages[@]}" -eq 0 ]; then
 	  panic "cannot get package list"
 fi
 
+tmp_file_no=0
 tmp_files=()
 tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
   panic "cannot make temporary directory"
