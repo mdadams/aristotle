@@ -1,0 +1,52 @@
+# /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2018 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+while getopts o:D: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	o)
+		out_file="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$out_file" ]; then
+	panic "no output file specified"
+fi
+
+if [ $# -ne 1 ]; then
+	panic "must specify exactly one HTML document"
+fi
+
+in_url="$1"
+
+google-chrome --headless --print-to-pdf="$out_file" "$in_url" || \
+  panic "google-chrome failed"
