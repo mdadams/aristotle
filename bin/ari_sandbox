@@ -1,0 +1,151 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+function panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options]
+	options:
+	-D debug_level
+	    Set the debug level to debug_level.
+	EOF
+	exit 2
+}
+
+cur_dir=$(pwd) || panic "cannot get current directory"
+abs_cur_dir=$(readlink -f "$cur_dir") || panic
+
+debug_level=${ARI_DEBUG_LEVEL:-0}
+bwrap_program="/usr/bin/bwrap"
+#bwrap_program="$HOME/bin/bwrap"
+mode=bwrap
+#mode=unsafe
+project_dir="${ARI_WORKSPACE_DIR}"
+package="${ARI_PACKAGE}"
+
+while getopts D:d:p:m: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		project_dir="$OPTARG";;
+	p)
+		package="$OPTARG";;
+	m)
+		mode="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$project_dir" ]; then
+	panic "no workspace directory specified"
+fi
+if [ -z "$package" ]; then
+	panic "no package specified"
+fi
+
+abs_project_dir=$(readlink -f "$project_dir") || panic
+abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
+abs_package_dir="$abs_project_dir/package-$package"
+
+args=("$@")
+
+if [ "${#args[@]}" -eq 0 ]; then
+	#args=("$SHELL")
+	panic "no command specified"
+fi
+
+bwrap_program=$(type -P bwrap) || bwrap_program=
+if [ -z "$bwrap_program" ]; then
+	eecho "WARNING: SANDBOXING IS NOT SUPPORTED"
+	mode=unsafe
+fi
+
+case "$mode" in
+bwrap)
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running application in sandbox"
+		eecho "Running $bwrap_program ${bwrap_args[@]} ${args[@]}"
+	fi
+	bwrap_args=()
+	#bwrap_args+=(--share-net)
+	bwrap_args+=(--unshare-all)
+	bwrap_args+=(--die-with-parent)
+	bwrap_args+=(--ro-bind /usr /usr)
+	bwrap_args+=(--ro-bind /etc /etc)
+#	bwrap_args+=(--ro-bind /etc/alternatives /etc/alternatives)
+	bwrap_args+=(--symlink usr/bin /bin)
+	bwrap_args+=(--symlink usr/sbin /sbin)
+	bwrap_args+=(--symlink usr/lib64 /lib64)
+	bwrap_args+=(--symlink usr/lib /lib)
+	bwrap_args+=(--ro-bind /home/mdadams/public/sde /home/mdadams/public/sde)
+	bwrap_args+=(--proc /proc)
+	bwrap_args+=(--dev /dev)
+	bwrap_args+=(--tmpfs /tmp)
+	bwrap_args+=(--dir /var)
+	bwrap_args+=(--symlink ../tmp var/tmp)
+#	bwrap_args+=(--dir etc)
+	bwrap_args+=(--bind "$abs_project_dir/distribution" "$abs_project_dir/distribution")
+	bwrap_args+=(--bind "$abs_project_dir/extras" "$abs_project_dir/extras")
+	for dir in install source derived; do
+		bwrap_args+=(--bind "$abs_package_dir/$dir" "$abs_package_dir/$dir")
+	done
+	#brwap_args+=(--ro-bind /tmp/FOOBAR /etc/CRAP)
+	#brwap_args+=(--ro-bind $(readlink -f /etc/resolv.conf) /etc/resolv.conf)
+	##bwrap_args+=(--bind "$abs_project_dir/ari" "$abs_project_dir/ari")
+#	bwrap_args+=(--bind "$abs_project_dir" "$abs_project_dir")
+#	bwrap_args+=(--chdir "$abs_project_dir")
+	bwrap_args+=(--chdir "$abs_cur_dir")
+	bwrap_args+=(--setenv PS1 "sandbox$ ")
+#	bwrap_args+=(--file 11 /etc/passwd)
+#	bwrap_args+=(--file 12 /etc/group)
+#	(exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}") \
+#	  11< <(getent passwd $UID 65534) \
+#	  12< <(getent group $(id -g) 65534)
+	exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}"
+	exit_status=$?
+	;;
+nop|unsafe|*)
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running application without sandbox"
+	fi
+	exec "${args[@]}"
+	exit_status=$?
+	;;
+esac
+
+exit "$exit_status"

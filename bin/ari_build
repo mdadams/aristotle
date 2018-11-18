@@ -62,6 +62,7 @@ ari_tee="$abs_cmd_dir/ari_tee"
 ari_mktemp="$abs_cmd_dir/ari_mktemp"
 ari_calc="$abs_cmd_dir/ari_calc"
 ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
+ari_sandbox="$abs_cmd_dir/ari_sandbox"
 
 user_name=`whoami` || panic "cannot get user name"
 host_name=`hostname` || panic "cannot get host name"
@@ -207,6 +208,10 @@ for package in "${packages[@]}"; do
 		;;
 	esac
 
+	configure_sandbox=$( \
+	  "$ari_info" -a "$project" "package-$package/configure_sandbox") || \
+	  panic "cannot get configure_sandbox"
+
 	saved_ifs="$IFS"
 	IFS=$'\ca'
 	configure_env=($( \
@@ -298,6 +303,11 @@ for package in "${packages[@]}"; do
 		find "$derived_dir" \( -type f -or -type l \) \
 		  -exec rm -f {} \; || panic "find failed"
 
+		ari_sandbox_opts=()
+		if [ "$configure_sandbox" -eq 0 ]; then
+			ari_sandbox_opts+=(-m nop)
+		fi
+
 		case "$build_tool" in
 
 		cmake)
@@ -307,7 +317,10 @@ for package in "${packages[@]}"; do
 			configure_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
 			if [ "$out_of_source_build" -ne 0 ]; then
-				(env "${configure_env[@]}" cmake \
+				(ARI_WORKSPACE_DIR="$project_dir" \
+				  ARI_PACKAGE="$package" \
+				  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
+				  env "${configure_env[@]}" cmake \
 				  -H"$source_dir" \
 				  -B"$derived_dir" \
 				  -DCMAKE_INSTALL_PREFIX="$install_dir" \
@@ -320,7 +333,10 @@ for package in "${packages[@]}"; do
 				  panic "cannot make link tree"
 				configure_status=0
 				if [ "$configure_status" -eq 0 ]; then
-					(env "${configure_env[@]}" cmake \
+					(ARI_WORKSPACE_DIR="$project_dir" \
+					  ARI_PACKAGE="$package" \
+					  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
+					  env "${configure_env[@]}" cmake \
 					  -H"$derived_dir" \
 					  -B"$derived_dir" \
 					  -DCMAKE_INSTALL_PREFIX="$install_dir" \
@@ -378,6 +394,8 @@ for package in "${packages[@]}"; do
 			  ARI_SOURCE_DIR="$source_dir" \
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
+			  ARI_PACKAGE="$package" \
+			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${configure_env[@]}" \
 			  "${configure_program[@]}" \
 			  "${configure_options[@]}" \
@@ -465,6 +483,10 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 
+		build_sandbox=$( \
+		  "$ari_info" -a "$project" "package-$package/build-$target/build_sandbox") || \
+		  panic "cannot get build_sandbox"
+
 		saved_ifs="$IFS"
 		IFS=$'\ca'
 		real_targets=($( \
@@ -508,6 +530,11 @@ for package in "${packages[@]}"; do
 			panic "cannot get build environment"
 		fi
 
+		ari_sandbox_opts=()
+		if [ "$build_sandbox" -eq 0 ]; then
+			ari_sandbox_opts+=(-m nop)
+		fi
+
 		case "$build_tool" in
 
 		cmake)
@@ -525,7 +552,10 @@ for package in "${packages[@]}"; do
 				if [ "$target" != all ]; then
 					cmake_opts+=(--target "$real_target")
 				fi
-				env "${build_env[@]}" cmake \
+				ARI_WORKSPACE_DIR="$project_dir" \
+				  ARI_PACKAGE="$package" \
+				  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
+				  env "${build_env[@]}" cmake \
 				  --build "$derived_dir" \
 				  "${cmake_opts[@]}" |& \
 				  "$ari_tee" -a "${tee_opts[@]}" \
@@ -542,7 +572,11 @@ for package in "${packages[@]}"; do
 		make)
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			(chdir "$derived_dir" && env "${build_env[@]}" make "$target") |& \
+			(ARI_WORKSPACE_DIR="$project_dir" \
+			  ARI_PACKAGE="$package" \
+			  chdir "$derived_dir" && \
+			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
+			  env "${build_env[@]}" make "$target") |& \
 			  "$ari_tee" "${tee_opts[@]}" \
 			  "$build_log_file"
 			build_status=${PIPESTATUS[0]}
@@ -579,6 +613,8 @@ for package in "${packages[@]}"; do
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
 			  ARI_BUILD_TARGET="$target" \
+			  ARI_PACKAGE="$package" \
+			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${build_env[@]}" \
 			  "${build_program[@]}" < /dev/null |& \
 			  "$ari_tee" "${tee_opts[@]}" "$build_log_file"

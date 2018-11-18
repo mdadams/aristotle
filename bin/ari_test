@@ -57,6 +57,7 @@ ari_tee="$abs_cmd_dir/ari_tee"
 ari_timeout="$abs_cmd_dir/ari_timeout"
 ari_calc="$abs_cmd_dir/ari_calc"
 ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
+ari_sandbox="$abs_cmd_dir/ari_sandbox"
 
 reproducible=0
 project_dir=$("$ari_locate" -q) || project_dir=
@@ -264,15 +265,30 @@ for package in "${packages[@]}"; do
 		  -a "$project" "package-$package/test-$target/timeout")) || \
 		  panic "cannot get test timeout"
 
+		test_sandbox=($("$ari_info" \
+		  -a "$project" "package-$package/test-$target/test_sandbox")) || \
+		  panic "cannot get test_sandbox"
+
 		test_program_buf=$(type -P "${test_program[0]}") || \
 		panic "cannot find test program ${test_program[@]}"
 		test_program[0]="$test_program_buf"
+		ari_sandbox_opts=()
+		if [ "$test_sandbox" -ne 0 ]; then
+			case "${test_program[0]}" in
+			*ari_run_catch_app)
+				ari_sandbox_opts+=(-m nop)
+				;;
+			esac
+		else
+			ari_sandbox_opts+=(-m nop)
+		fi
 		if [ ! -x "${test_program[0]}" ]; then
 			panic "cannot execute test program ${test_program[@]}"
 		fi
 		if [ "$debug_level" -ge 1 ]; then
 			eecho "Running ${test_program[@]}"
 		fi
+
 		test_start_time=$(time_since_epoch) || \
 		  panic "cannot get start time"
 		ARI_WORKSPACE_DIR="$project_dir" \
@@ -283,6 +299,8 @@ for package in "${packages[@]}"; do
 		  ARI_DERIVED_DIR="$derived_dir" \
 		  ARI_INSTALL_DIR="$install_dir" \
 		  ARI_TEST_RESULT_FILE="$test_result_file" \
+		  ARI_PACKAGE="$package" \
+		  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 		  "$ari_timeout" -t "$test_timeout" \
 		  "${test_program[@]}" < /dev/null |& \
 		  "$ari_tee" "${tee_opts[@]}" "$test_log_file"
