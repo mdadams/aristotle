@@ -344,11 +344,11 @@ print_status()
 			else
 				info_items+=("?s")
 			fi
-			#if [ "$reproducible" -eq 0 ]; then
+			if [ "$reproducible" -eq 0 ]; then
 				info_items+=("${log_length}L")
-			#else
-			#	info_items+=("?L")
-			#fi
+			else
+				info_items+=("?L")
+			fi
 		fi
 	fi
 	if [ "${#info_items[@]}" -gt 0 ]; then
