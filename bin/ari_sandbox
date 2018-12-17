@@ -44,18 +44,31 @@ usage()
 	exit 2
 }
 
+abs_cmd_dir=$(readlink -f "$cmd_dir") || panic
+
 cur_dir=$(pwd) || panic "cannot get current directory"
 abs_cur_dir=$(readlink -f "$cur_dir") || panic
 
+ari_locate="$cmd_dir/ari_locate"
+
 debug_level=${ARI_DEBUG_LEVEL:-0}
-bwrap_program="/usr/bin/bwrap"
-#bwrap_program="$HOME/bin/bwrap"
+#debug_level=1
+#bwrap_program=$(type -P bwrap) || bwrap_program=
+#bwrap_program="/usr/bin/bwrap"
+bwrap_program="$abs_cmd_dir/bwrap"
 mode=bwrap
 #mode=unsafe
-project_dir="${ARI_WORKSPACE_DIR}"
-package="${ARI_PACKAGE}"
 
-while getopts D:d:p:m: option; do
+if [ -z "$ARI_WORKSPACE_DIR" ]; then
+	project_dir=$("$ari_locate" -q .) || panic
+else
+	project_dir="${ARI_WORKSPACE_DIR}"
+fi
+
+package="${ARI_PACKAGE}"
+special=0
+
+while getopts D:d:p:m:XB: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -65,22 +78,32 @@ while getopts D:d:p:m: option; do
 		package="$OPTARG";;
 	m)
 		mode="$OPTARG";;
+	X)
+		special=1;;
+	B)
+		bwrap_program="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
 done
 shift $((OPTIND - 1))
 
+if [ "$special" -eq 0 ]; then
 if [ -z "$project_dir" ]; then
 	panic "no workspace directory specified"
 fi
-if [ -z "$package" ]; then
-	panic "no package specified"
+#if [ -z "$package" ]; then
+#	panic "no package specified"
+#fi
 fi
 
-abs_project_dir=$(readlink -f "$project_dir") || panic
-abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
-abs_package_dir="$abs_project_dir/package-$package"
+if [ "$special" -eq 0 ]; then
+	abs_project_dir=$(readlink -f "$project_dir") || panic
+	abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
+if [ -n "$package" ]; then
+	abs_package_dir="$abs_project_dir/package-$package"
+fi
+fi
 
 args=("$@")
 
@@ -89,8 +112,14 @@ if [ "${#args[@]}" -eq 0 ]; then
 	panic "no command specified"
 fi
 
-bwrap_program=$(type -P bwrap) || bwrap_program=
-if [ -z "$bwrap_program" ]; then
+if [ -f "/proc/sys/user/max_user_namespaces" ]; then
+	max_user_namespaces=$(cat /proc/sys/user/max_user_namespaces) || \
+	  panic "cannot get max user namespaces"
+else
+	max_user_namespaces=0
+fi
+
+if [ ! -x "$bwrap_program" -o "$max_user_namespaces" -eq 0 ]; then
 	eecho "WARNING: SANDBOXING IS NOT SUPPORTED"
 	mode=unsafe
 fi
@@ -103,11 +132,14 @@ bwrap)
 	fi
 	bwrap_args=()
 	#bwrap_args+=(--share-net)
-	bwrap_args+=(--unshare-all)
+	#bwrap_args+=(--unshare-all)
+	bwrap_args+=(--unshare-user)
+#	bwrap_args+=(--unshare-cgroup)
 	bwrap_args+=(--die-with-parent)
+bwrap_args+=(--bind "/sys" "/sys")
 	bwrap_args+=(--ro-bind /usr /usr)
 	bwrap_args+=(--ro-bind /etc /etc)
-#	bwrap_args+=(--ro-bind /etc/alternatives /etc/alternatives)
+	#bwrap_args+=(--ro-bind /etc/alternatives /etc/alternatives)
 	bwrap_args+=(--symlink usr/bin /bin)
 	bwrap_args+=(--symlink usr/sbin /sbin)
 	bwrap_args+=(--symlink usr/lib64 /lib64)
@@ -118,24 +150,46 @@ bwrap)
 	bwrap_args+=(--tmpfs /tmp)
 	bwrap_args+=(--dir /var)
 	bwrap_args+=(--symlink ../tmp var/tmp)
-#	bwrap_args+=(--dir etc)
-	bwrap_args+=(--bind "$abs_project_dir/distribution" "$abs_project_dir/distribution")
-	bwrap_args+=(--bind "$abs_project_dir/extras" "$abs_project_dir/extras")
-	for dir in install source derived; do
-		bwrap_args+=(--bind "$abs_package_dir/$dir" "$abs_package_dir/$dir")
-	done
-	#brwap_args+=(--ro-bind /tmp/FOOBAR /etc/CRAP)
+	###bwrap_args+=(--dir etc)
+	if [ $special -eq 0 ]; then
+bwrap_args+=(--bind "$abs_project_dir/.aristotle" \
+  "$abs_project_dir/.aristotle")
+bwrap_args+=(--bind "$abs_project_dir/assignment_id" \
+  "$abs_project_dir/assignment_id")
+		bwrap_args+=(--bind "$abs_project_dir/distribution" \
+		  "$abs_project_dir/distribution")
+		bwrap_args+=(--bind "$abs_project_dir/extras" \
+		  "$abs_project_dir/extras")
+if [ -n "$package" ]; then
+		for dir in install source derived; do
+			bwrap_args+=(--bind "$abs_package_dir/$dir" \
+			  "$abs_package_dir/$dir")
+		done
+fi
+	fi
 	#brwap_args+=(--ro-bind $(readlink -f /etc/resolv.conf) /etc/resolv.conf)
-	##bwrap_args+=(--bind "$abs_project_dir/ari" "$abs_project_dir/ari")
-#	bwrap_args+=(--bind "$abs_project_dir" "$abs_project_dir")
-#	bwrap_args+=(--chdir "$abs_project_dir")
-	bwrap_args+=(--chdir "$abs_cur_dir")
+	#bwrap_args+=(--bind "$abs_project_dir" "$abs_project_dir")
+	#bwrap_args+=(--chdir "$abs_project_dir")
+	if [ $special -ne 0 ]; then
+		bwrap_args+=(--ro-bind "$abs_cmd_dir" "$abs_cmd_dir")
+		#bwrap_args+=(--chdir "$abs_cmd_dir")
+	else
+		bwrap_args+=(--chdir "$abs_cur_dir")
+	fi
 	bwrap_args+=(--setenv PS1 "sandbox$ ")
+
 #	bwrap_args+=(--file 11 /etc/passwd)
 #	bwrap_args+=(--file 12 /etc/group)
 #	(exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}") \
 #	  11< <(getent passwd $UID 65534) \
 #	  12< <(getent group $(id -g) 65534)
+#if [ $special -ne 0 ]; then
+#	bwrap_args+=(--ro-bind /tmp/mdadams/bwrap /bwrap)
+#fi
+
+	if [ "$debug_level" -ge 1 ]; then
+		eecho "Running $bwrap_program ${bwrap_args[@]} ${args[@]}"
+	fi
 	exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}"
 	exit_status=$?
 	;;

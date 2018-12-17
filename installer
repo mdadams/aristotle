@@ -23,6 +23,13 @@
 # 
 # __END_OF_LICENSE__
 
+################################################################################
+
+# Bubblewrap: https://github.com/projectatomic/bubblewrap
+bwrap_version="v0.3.1"
+
+################################################################################
+
 cmd_dir=$(dirname "$0") || exit 1
 
 panic()
@@ -96,6 +103,10 @@ shift $((OPTIND - 1))
 if [ -z "$install_dir" ]; then
 	usage "no installation directory specified"
 fi
+abs_install_dir=$(readlink -f "$install_dir") || panic
+packages_dir="$abs_install_dir/packages"
+bin_dir="$abs_install_dir/bin"
+bwrap_dir="$packages_dir/bwrap-$bwrap_version"
 
 umask 022
 
@@ -108,10 +119,24 @@ if [ "$clean" -ne 0 ]; then
 	fi
 fi
 
-for dir in bin etc; do
+for dir in bin etc packages; do
 	target_dir="$install_dir/$dir"
 	if [ ! -d "$target_dir" ]; then
 		mkdir -p "$target_dir" || panic
+	fi
+done
+
+"$cmd_dir/bin/ari_install_bwrap" -d "$bwrap_dir" -v "$bwrap_version" || panic
+
+rm -f "$packages_dir/bwrap"
+rm -f "$bin_dir/bwrap"
+ln -s "bwrap-$bwrap_version" "$packages_dir/bwrap" || panic
+ln -s "../packages/bwrap/bin/bwrap" "$bin_dir/bwrap" || panic
+
+for dir in bin etc; do
+	target_dir="$install_dir/$dir"
+	if [ ! -d "$target_dir" ]; then
+		panic
 	fi
 	tree_copy "$cmd_dir/$dir" "$target_dir" || panic
 done
