@@ -35,8 +35,19 @@ usage()
 {
 	echo "$@"
 	cat <<- EOF
-	usage: $0 [options] source_repo target_repo
-	options:
+	usage: $0 [options] \$source_repo \$target_repo
+
+	Description
+	===========
+
+	This command creates an exact copy of a Git repository.
+	The source repository identified by \$source_repo is
+	duplicated exactly in the target repository identified
+	by \$target_repo.
+
+	Options
+	=======
+
 	-r
 	    Specify that target repository is remote.
 	-C
@@ -45,6 +56,11 @@ usage()
 	    Set the debug level to debug_level.
 	-v
 	    Increase the verbosity level of output.
+
+	Examples
+	========
+
+	$0 https://github.com/mdadams/jasper.git jasper_copy.git
 	EOF
 	exit 2
 }
