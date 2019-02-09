@@ -38,26 +38,6 @@ panic()
 	exit 1
 }
 
-usage()
-{
-	echo "$@"
-	cat <<- EOF
-	usage: $0 [options] -d \$install_dir
-	options:
-	-d \$install_dir
-	    Set the install directory to \$install_dir.
-	-a \$assignments_dir
-	    Set the default assignment-definition directory to \$assignments_dir.
-	-c
-	    Remove old files first.
-	for example:
-	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
-	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
-	(avoid -c if symlink for assignments might be deleted)
-	EOF
-	exit 2
-}
-
 tree_copy()
 {
 	local source_dir="$1"
@@ -82,11 +62,49 @@ tree_adjust_perms()
 	fi
 }
 
+test_user_namespaces()
+{
+	local max_user_namespaces
+	if [ -f "/proc/sys/user/max_user_namespaces" ]; then
+		max_user_namespaces=$(cat /proc/sys/user/max_user_namespaces) || \
+		  return 1
+	else
+		max_user_namespaces=0
+	fi
+	if [ "$max_user_namespaces" -ne 0 ]; then
+		echo 1
+	else
+		echo 0
+	fi
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage: $0 [options] -d \$install_dir
+	options:
+	-d \$install_dir
+	    Set the install directory to \$install_dir.
+	-a \$assignments_dir
+	    Set the default assignment-definition directory to \$assignments_dir.
+	-c
+	    Remove old files first.
+	for example:
+	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
+	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
+	(avoid -c if symlink for assignments might be deleted)
+	EOF
+	exit 2
+}
+
 clean=0
 install_dir=
 assignments_dir=
+sandbox_mode=
+bwrap_option_spec=()
 
-while getopts cd:a: opt; do
+while getopts b:cd:a:m: opt; do
 	case $opt in
 	d)
 		install_dir="$OPTARG";;
@@ -94,6 +112,10 @@ while getopts cd:a: opt; do
 		assignments_dir="$OPTARG";;
 	c)
 		clean=1;;
+	m)
+		sandbox_mode="$OPTARG";;
+	b)
+		bwrap_option_spec="$OPTARG";;
 	*)
 		usage "invalid option";;
 	esac
@@ -107,6 +129,18 @@ abs_install_dir=$(readlink -f "$install_dir") || panic
 packages_dir="$abs_install_dir/packages"
 bin_dir="$abs_install_dir/bin"
 bwrap_dir="$packages_dir/bwrap-$bwrap_version"
+ari_config_file="$abs_install_dir/etc/config"
+
+if [ -z "$sandbox_mode" ]; then
+	has_user_namespaces=$(test_user_namespaces) || panic
+	if [ "$has_user_namespaces" -ne 0 ]; then
+		sandbox_mode=bwrap
+	else
+		sandbox_mode=unsafe
+	fi
+fi
+
+bwrap_options=($(echo "$bwrap_option_spec")) || panic
 
 umask 022
 
@@ -125,6 +159,13 @@ for dir in bin etc packages; do
 		mkdir -p "$target_dir" || panic
 	fi
 done
+
+sandbox_mode=bwrap
+cat > "$ari_config_file" <<- EOF
+sandbox_mode $sandbox_mode
+bwrap_options ${bwrap_options[@]}
+EOF
+[ $? -eq 0 ] || panic "cannot create configuration file"
 
 "$cmd_dir/bin/ari_install_bwrap" -d "$bwrap_dir" -v "$bwrap_version" || panic
 
