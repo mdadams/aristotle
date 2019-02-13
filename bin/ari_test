@@ -300,6 +300,7 @@ for package in "${packages[@]}"; do
 		  ARI_INSTALL_DIR="$install_dir" \
 		  ARI_TEST_RESULT_FILE="$test_result_file" \
 		  ARI_PACKAGE="$package" \
+		  ARI_SANDBOX_TYPE=test \
 		  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 		  "$ari_timeout" -t "$test_timeout" \
 		  "${test_program[@]}" < /dev/null |& \

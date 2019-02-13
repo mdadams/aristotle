@@ -319,6 +319,7 @@ for package in "${packages[@]}"; do
 			if [ "$out_of_source_build" -ne 0 ]; then
 				(ARI_WORKSPACE_DIR="$project_dir" \
 				  ARI_PACKAGE="$package" \
+				  ARI_SANDBOX_TYPE=configure \
 				  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 				  env "${configure_env[@]}" cmake \
 				  -H"$source_dir" \
@@ -335,6 +336,7 @@ for package in "${packages[@]}"; do
 				if [ "$configure_status" -eq 0 ]; then
 					(ARI_WORKSPACE_DIR="$project_dir" \
 					  ARI_PACKAGE="$package" \
+					  ARI_SANDBOX_TYPE=configure \
 					  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 					  env "${configure_env[@]}" cmake \
 					  -H"$derived_dir" \
@@ -395,6 +397,7 @@ for package in "${packages[@]}"; do
 			  ARI_DERIVED_DIR="$derived_dir" \
 			  ARI_INSTALL_DIR="$install_dir" \
 			  ARI_PACKAGE="$package" \
+			  ARI_SANDBOX_TYPE=configure \
 			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${configure_env[@]}" \
 			  "${configure_program[@]}" \
@@ -554,6 +557,7 @@ for package in "${packages[@]}"; do
 				fi
 				ARI_WORKSPACE_DIR="$project_dir" \
 				  ARI_PACKAGE="$package" \
+				  ARI_SANDBOX_TYPE=build \
 				  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 				  env "${build_env[@]}" cmake \
 				  --build "$derived_dir" \
@@ -574,6 +578,7 @@ for package in "${packages[@]}"; do
 			  panic "cannot get start time"
 			(ARI_WORKSPACE_DIR="$project_dir" \
 			  ARI_PACKAGE="$package" \
+			  ARI_SANDBOX_TYPE=build \
 			  chdir "$derived_dir" && \
 			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${build_env[@]}" make "$target") |& \
@@ -614,6 +619,7 @@ for package in "${packages[@]}"; do
 			  ARI_INSTALL_DIR="$install_dir" \
 			  ARI_BUILD_TARGET="$target" \
 			  ARI_PACKAGE="$package" \
+			  ARI_SANDBOX_TYPE=build \
 			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${build_env[@]}" \
 			  "${build_program[@]}" < /dev/null |& \

@@ -63,8 +63,9 @@ bwrap_program="$abs_cmd_dir/bwrap"
 mode=
 package="${ARI_PACKAGE}"
 test="${ARI_TEST}"
+type=
 
-while getopts D:d:p:m:B:ut: option; do
+while getopts D:d:p:m:B:ut:k: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -72,6 +73,8 @@ while getopts D:d:p:m:B:ut: option; do
 		project_dir="$OPTARG";;
 	p)
 		package="$OPTARG";;
+	k)
+		type="$OPTARG";;
 	t)
 		test="$OPTARG";;
 	m)
@@ -92,6 +95,10 @@ fi
 
 if [ "$debug_level" -ge 10 ]; then
 	set -xv
+fi
+
+if [ -n "${ARI_SANDBOXED+x}" ]; then
+	panic "nesting of sandboxes is not supported"
 fi
 
 if [ -z "$project_dir" ]; then
@@ -147,6 +154,9 @@ fi
 case "$mode" in
 bwrap)
 
+	# A sandbox is being used.
+	# Set the environment variable ARI_SANDBOXED.
+	export ARI_SANDBOXED=
 	helper_program="$abs_cmd_dir/ari_sandbox_bwrap"
 
 	saved_ifs="$IFS"
@@ -188,13 +198,18 @@ bwrap)
 	exec "$helper_program" "${helper_args[@]}" "${args[@]}"
 	exit_status=$?
 	;;
+
 nop|unsafe|*)
+
+	# No sandbox is being used.
+	# Do not set the environment variable ARI_SANDBOXED.
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Running application without sandbox"
 	fi
 	exec "${args[@]}"
 	exit_status=$?
 	;;
+
 esac
 
 exit "$exit_status"
