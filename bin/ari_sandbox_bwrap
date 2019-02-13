@@ -1,0 +1,334 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2019 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+################################################################################
+# Various utility functions.
+################################################################################
+
+eecho()
+{
+	echo "$@" 1>&2
+}
+
+ecat()
+{
+	cat "$@" 1>&2
+}
+
+panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+min()
+{
+	local x="$1"
+	local y="$2"
+	echo $((x < y ? x : y))
+}
+
+max()
+{
+	local x="$1"
+	local y="$2"
+	echo $((x > y ? x : y))
+}
+
+################################################################################
+# Process command line.
+################################################################################
+
+usage()
+{
+	if [ $# -ne 0 ]; then
+		echo "$@"
+	fi
+	echo "usage: $0 [options] program_path"
+	exit 2
+}
+
+debug_level="${ARI_DEBUG_LEVEL:-0}"
+op_list=()
+cur_dir=
+bwrap_program=
+
+while getopts b:C:A:a:d:t:D: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	b)
+		bwrap_program="$OPTARG";;
+	C)
+		cur_dir="$OPTARG";;
+	a)
+		op_list+=(add)
+		op_list+=("$OPTARG")
+		;;
+	A)
+		op_list+=(ro_add)
+		op_list+=("$OPTARG")
+		;;
+	d)
+		op_list+=(delete)
+		op_list+=("$OPTARG")
+		;;
+	t)
+		op_list+=(tmp_add)
+		op_list+=("$OPTARG")
+		;;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ $# -eq 0 ]; then
+	usage "no command specified"
+fi
+args=("$@")
+
+################################################################################
+# Perform some initial setup.
+################################################################################
+
+cmd_dir=$(dirname "$0") || panic "cannot get command directory"
+user=$(whoami) || panic "cannot get user name"
+host=$(hostname) || panic "cannot get host name"
+
+tmp_dir="${SDE_TMPDIR:-/tmp}/$program_name-$user@$host-$$"
+empty_file="$tmp_dir/empty_file"
+empty_dir="$tmp_dir/empty_dir"
+
+if [ -z "$bwrap_program" ]; then
+	bwrap_program="$cmd_dir/bwrap"
+fi
+
+if [ -n "$cur_dir" ]; then
+	cur_dir=$(realpath "$cur_dir") || panic "cannot get realpath"
+fi
+
+# Check if the system appears to have user namespaces enabled.
+if [ -f "/proc/sys/user/max_user_namespaces" ]; then
+	max_user_namespaces=$(cat /proc/sys/user/max_user_namespaces) || \
+	  panic "cannot get max user namespaces"
+else
+	max_user_namespaces=0
+fi
+if [ "$max_user_namespaces" -eq 0 ]; then
+	panic "system does not have user-namespace support enabled)"
+fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "maximum number of user namespaces: $max_user_namespaces"
+fi
+
+sys_max_threads=$(sysctl -n kernel.threads-max) || \
+  panic "cannot get maximum number of system-wide threads"
+sys_max_processes=$(sysctl -n kernel.pid_max) || \
+  panic "cannot get maximum number of system-wide processes"
+user_cur_threads=$(ps --no-header -u $user -L | wc -l) || \
+  panic "cannot get current number of user threads"
+phys_mem_size=$(awk '/MemTotal/ {print $2}' /proc/meminfo) || \
+  panic "cannot get physical memory size"
+
+user_max_threads=$(ulimit -u) || \
+  panic "cannot get thread resource limit"
+user_max_mem=$(ulimit -m) || \
+  panic "cannot get memory resource limit"
+
+ulimit_u1=$((2 * user_cur_threads))
+ulimit_u2=$((user_cur_threads + 4096))
+ulimit_u=$(max "$ulimit_u1" "$ulimit_u2") || \
+  panic "max failed"
+if [ "$user_max_threads" != "unlimited" ]; then
+	ulimit_u=$(min "$user_max_threads" "$ulimit_u") || \
+	  panic "min failed"
+fi
+
+ulimit_m=$((3 * phys_mem_size / 4)) || \
+  panic "computation failed"
+if [ "$user_max_mem" != unlimited ]; then
+	ulimit_m=$(min "$user_max_mem" "$ulimit_m") || \
+	  panic "min failed"
+fi
+
+if [ "$debug_level" -ge 2 ]; then
+	eecho "system maximum threads: $sys_max_threads"
+	eecho "system maximum processes: $sys_max_processes"
+	eecho "user maximum threads: $user_max_threads"
+	eecho "user current threads: $user_cur_threads"
+	eecho "start of configuration file"
+	ecat "$ari_config_file" 2>&1
+	eecho "end of configuration file"
+fi
+
+################################################################################
+# Select bwrap options.
+################################################################################
+
+options=()
+#options+=(--share-net)
+#options+=(--unshare-all)
+options+=(--unshare-user)
+#bwrap_args+=(--unshare-cgroup)
+options+=(--die-with-parent)
+options+=(--proc /proc)
+options+=(--bind /sys /sys)
+options+=(--dev /dev)
+options+=(--tmpfs /tmp)
+
+options+=(--dir /usr)
+# Note: Should the local directory be included?
+for i in bin sbin lib lib64 libexec include share; do
+	target="/usr/$i"
+	if [ -e "$target" ]; then
+		options+=(--ro-bind "$target" "$target")
+	fi
+done
+for i in bin sbin lib lib64; do
+	src="/usr/$i"
+	if [ -e "$src" ]; then
+		options+=(--symlink "$src" "/$i")
+	fi
+done
+
+# Some files/directories under /etc are likely needed in some situations.
+# For example, we might need access to:
+#     /etc/alternatives
+#     /etc/resolv.conf
+#options+=(--ro-bind /etc /etc)
+options+=(--dir /etc)
+for i in alternatives resolv.conf; do
+	target="/etc/$i"
+	if [ -e "$target" ]; then
+		options+=(--ro-bind "$target" "$target")
+	fi
+done
+
+options+=(--dir /var)
+options+=(--symlink ../tmp var/tmp)
+
+options+=(--setenv PS1 "sandbox$ ")
+
+i=0
+while [ "$i" -lt "${#op_list[@]}" ]; do
+	op="${op_list[$i]}"
+	i=$((i + 1))
+	#eecho "operation: $op"
+	case "$op" in
+	add|ro_add)
+		if [ "$op" = "add" ]; then
+			bind_arg="--bind"
+		else
+			bind_arg="--ro-bind"
+		fi
+		path="${op_list[$i]}"
+		i=$((i + 1))
+		#eecho "raw path: $path"
+		path=$(realpath -s "$path") || panic "cannot get realpath"
+		#eecho "add/ro_add $path"
+		if [ -L "$path" ]; then
+			target=$(readlink -f "$path") || panic "cannot read link"
+			options+=("$bind_arg" "$target" "$target")
+			#options+=(--symlink "$target" "$path")
+			options+=(--symlink "$target" "$path")
+		else
+			options+=("$bind_arg" "$path" "$path")
+		fi
+		;;
+	delete)
+		path="${op_list[$i]}"
+		i=$((i + 1))
+		#eecho "raw path: $path"
+		path=$(realpath -s "$path") || panic "cannot get realpath"
+		#eecho "delete $path"
+		if [ -d "$path" ]; then
+			#options+=(--tmpfs "$path")
+			#options+=(--remount-ro "$path")
+			options+=(--ro-bind "$empty_dir" "$path")
+		else
+			options+=(--ro-bind "$empty_file" "$path")
+		fi
+		;;
+	tmp_add)
+		path="${op_list[$i]}"
+		i=$((i + 1))
+		#eecho "raw path: $path"
+		path=$(realpath -s "$path") || panic "cannot get realpath"
+		#eecho "tmp_add $path"
+		options+=(--dir "$path")
+		options+=(--tmpfs "$path")
+		;;
+	esac
+done
+
+options+=(--remount-ro /)
+
+if [ -n "$cur_dir" ]; then
+	options+=(--chdir "$cur_dir")
+fi
+
+################################################################################
+# Run sandboxed application.
+################################################################################
+
+mkdir -p "$tmp_dir" || panic "cannot make temporary directory"
+
+if [ -e "$empty_file" ]; then
+	panic "file should not exist"
+fi
+if [ -e "$empty_dir" ]; then
+	panic "directory should not exist"
+fi
+touch "$empty_file" || panic "cannot create empty file"
+chmod a-rwx "$empty_file" || panic "cannot set permissions for empty file"
+mkdir -p "$empty_dir" || panic "cannot create empty directory"
+chmod a+rx "$empty_dir" || panic "cannot set permissions for empty directory"
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "command: ulimit -u $ulimit_u"
+fi
+ulimit -u "$ulimit_u" || panic "cannot set process limit"
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "command: ulimit -m $ulimit_m"
+fi
+ulimit -m "$ulimit_m" || panic "cannot set memory limit"
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "Running $bwrap_program ${options[@]}"
+fi
+"$bwrap_program" "${options[@]}" "${args[@]}"
+exit_status=$?
+
+rm -rf "$tmp_dir"
+
+exit "$exit_status"
+
+#	bwrap_args+=(--file 11 /etc/passwd)
+#	bwrap_args+=(--file 12 /etc/group)
+#	(exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}") \
+#	  11< <(getent passwd $UID 65534) \
+#	  12< <(getent group $(id -g) 65534)

@@ -32,20 +32,6 @@ function panic()
 	exit 1
 }
 
-min()
-{
-	local x="$1"
-	local y="$2"
-	echo $((x < y ? x : y))
-}
-
-max()
-{
-	local x="$1"
-	local y="$2"
-	echo $((x > y ? x : y))
-}
-
 usage()
 {
 	echo "$@"
@@ -76,9 +62,9 @@ bwrap_program="$abs_cmd_dir/bwrap"
 
 mode=
 package="${ARI_PACKAGE}"
-special=0
+test="${ARI_TEST}"
 
-while getopts D:d:p:m:XB:u option; do
+while getopts D:d:p:m:B:ut: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -86,10 +72,10 @@ while getopts D:d:p:m:XB:u option; do
 		project_dir="$OPTARG";;
 	p)
 		package="$OPTARG";;
+	t)
+		test="$OPTARG";;
 	m)
 		mode="$OPTARG";;
-	X)
-		special=1;;
 	B)
 		bwrap_program="$OPTARG";;
 	*)
@@ -97,6 +83,12 @@ while getopts D:d:p:m:XB:u option; do
 	esac
 done
 shift $((OPTIND - 1))
+
+args=("$@")
+
+if [ "${#args[@]}" -eq 0 ]; then
+	panic "no command specified"
+fi
 
 if [ "$debug_level" -ge 10 ]; then
 	set -xv
@@ -111,64 +103,22 @@ if [ -z "$project_dir" ]; then
 	fi
 fi
 
-if [ "$special" -eq 0 ]; then
-	if [ -z "$project_dir" ]; then
-		panic "no workspace directory specified"
-	fi
-	if [ -z "$package" ]; then
-		panic "no package specified"
-	fi
+if [ -z "$project_dir" ]; then
+	panic "no workspace directory specified"
+fi
+if [ -z "$package" ]; then
+	panic "no package specified"
 fi
 
-if [ "$special" -eq 0 ]; then
-	abs_project_dir=$(readlink -f "$project_dir") || panic
-	abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
-	if [ -n "$package" ]; then
-		abs_package_dir="$abs_project_dir/package-$package"
-	fi
-fi
-
-args=("$@")
-
-if [ "${#args[@]}" -eq 0 ]; then
-	panic "no command specified"
+abs_project_dir=$(readlink -f "$project_dir") || panic
+abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
+if [ -n "$package" ]; then
+	abs_package_dir="$abs_project_dir/package-$package"
 fi
 
 ################################################################################
 # Perform some setup.
 ################################################################################
-
-user=$(whoami) || panic
-
-sys_max_threads=$(sysctl -n kernel.threads-max) || panic
-sys_max_processes=$(sysctl -n kernel.pid_max) || panic
-user_cur_threads=$(ps --no-header -u $user -L | wc -l) || panic
-phys_mem_size=$(awk '/MemTotal/ {print $2}' /proc/meminfo) || panic
-
-user_max_threads=$(ulimit -u) || panic
-user_max_mem=$(ulimit -m) || panic
-
-ulimit_u1=$((2 * user_cur_threads))
-ulimit_u2=$((user_cur_threads + 4096))
-ulimit_u=$(max "$ulimit_u1" "$ulimit_u2") || panic
-if [ "$user_max_threads" != "unlimited" ]; then
-	ulimit_u=$(min "$user_max_threads" "$ulimit_u") || panic
-fi
-
-ulimit_m=$((3 * phys_mem_size / 4)) || panic
-if [ "$user_max_mem" != unlimited ]; then
-	ulimit_m=$(min "$user_max_mem" "$ulimit_m") || panic
-fi
-
-if [ "$debug_level" -ge 2 ]; then
-	eecho "system maximum threads: $sys_max_threads"
-	eecho "system maximum processes: $sys_max_processes"
-	eecho "user maximum threads: $user_max_threads"
-	eecho "user current threads: $user_cur_threads"
-	eecho "start of configuration file"
-	cat "$ari_config_file" 2>&1
-	eecho "end of configuration file"
-fi
 
 if [ -z "$mode" ]; then
 	saved_ifs="$IFS"
@@ -190,45 +140,22 @@ if [ -z "$mode" ]; then
 	mode="$default_mode"
 fi
 
-case "$mode" in
-bwrap)
-	# Check if the system appears to have user namespaces enabled.
-	if [ -f "/proc/sys/user/max_user_namespaces" ]; then
-		max_user_namespaces=$(cat /proc/sys/user/max_user_namespaces) || \
-		  panic "cannot get max user namespaces"
-	else
-		max_user_namespaces=0
-	fi
-	if [ "$max_user_namespaces" -eq 0 ]; then
-		panic "sandboxing is not supported"
-	fi
-	if [ "$debug_level" -ge 1 ]; then
-		eecho "maximum number of user namespaces: $max_user_namespaces"
-	fi
-	;;
-esac
-
 ################################################################################
 # Run sandboxed application.
 ################################################################################
 
-if [ "$debug_level" -ge 1 ]; then
-	eecho "command: ulimit -u $ulimit_u"
-	eecho "command: ulimit -m $ulimit_m"
-fi
-ulimit -u "$ulimit_u" || panic "cannot set process limit"
-ulimit -m "$ulimit_m" || panic "cannot set memory limit"
-
 case "$mode" in
 bwrap)
+
+	helper_program="$abs_cmd_dir/ari_sandbox_bwrap"
 
 	saved_ifs="$IFS"
 	IFS=$'\ca'
 	set -f
-	bwrap_options=($( \
+	helper_options=($( \
 	  ARI_ROOT_DIR="$ari_root_dir" \
 	  "$ari_tvp" \
-	  -i "$ari_config_file" -d "$IFS" -t bwrap_options))
+	  -i "$ari_config_file" -d "$IFS" -t sandbox_options))
 	status=$?
 	set +f
 	IFS="$saved_ifs"
@@ -237,7 +164,7 @@ bwrap)
 	fi
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "bwrap options:"
-		for i in "${bwrap_options[@]}"; do
+		for i in "${helper_options[@]}"; do
 			eecho "    $i"
 		done
 	fi
@@ -246,75 +173,19 @@ bwrap)
 		eecho "Running application in sandbox"
 		eecho "Running $bwrap_program ${bwrap_args[@]} ${args[@]}"
 	fi
-	bwrap_args=()
-	#bwrap_args+=(--share-net)
-	#bwrap_args+=(--unshare-all)
-	bwrap_args+=(--unshare-user)
-	#bwrap_args+=(--unshare-cgroup)
-	bwrap_args+=(--die-with-parent)
-	bwrap_args+=(--proc /proc)
-	bwrap_args+=(--bind "/sys" "/sys")
-	bwrap_args+=(--dev /dev)
-	bwrap_args+=(--tmpfs /tmp)
-	#bwrap_args+=(--ro-bind /usr /usr)
-	bwrap_args+=(--dir /usr)
-	# Note: Should the local directory be included?
-	for i in bin sbin lib lib64 libexec include share; do
-		target="/usr/$i"
-		if [ -e "$target" ]; then
-			bwrap_args+=(--ro-bind "$target" "$target")
-		fi
-	done
-	# On some systems, /etc/alternatives contains symlinks to real programs.
-	# For this reason, the directory /etc is made visible.
-	bwrap_args+=(--ro-bind /etc /etc)
-	bwrap_args+=(--symlink usr/bin /bin)
-	bwrap_args+=(--symlink usr/sbin /sbin)
-	bwrap_args+=(--symlink usr/lib64 /lib64)
-	bwrap_args+=(--symlink usr/lib /lib)
-	bwrap_args+=(--dir /var)
-	bwrap_args+=(--symlink ../tmp var/tmp)
-	###bwrap_args+=(--dir etc)
-	if [ $special -eq 0 ]; then
-		bwrap_args+=(--bind "$abs_project_dir/.aristotle" \
-		  "$abs_project_dir/.aristotle")
-		bwrap_args+=(--bind "$abs_project_dir/assignment_id" \
-		  "$abs_project_dir/assignment_id")
-		bwrap_args+=(--bind "$abs_project_dir/distribution" \
-		  "$abs_project_dir/distribution")
-		bwrap_args+=(--bind "$abs_project_dir/extras" \
-		  "$abs_project_dir/extras")
-		if [ -n "$package" ]; then
-			for dir in install source derived; do
-				bwrap_args+=(--bind "$abs_package_dir/$dir" \
-				  "$abs_package_dir/$dir")
-			done
-		fi
-	else
-		bwrap_args+=(--bind "$abs_cur_dir" "$abs_cur_dir")
-	fi
-	#brwap_args+=(--ro-bind $(readlink -f /etc/resolv.conf) /etc/resolv.conf)
-	#bwrap_args+=(--bind "$abs_project_dir" "$abs_project_dir")
-	#bwrap_args+=(--chdir "$abs_project_dir")
-	if [ $special -ne 0 ]; then
-		bwrap_args+=(--ro-bind "$abs_cmd_dir" "$abs_cmd_dir")
-		#bwrap_args+=(--chdir "$abs_cmd_dir")
-	else
-		bwrap_args+=(--chdir "$abs_cur_dir")
-	fi
-	bwrap_args+=(--setenv PS1 "sandbox$ ")
-	bwrap_args+=("${bwrap_options[@]}")
 
-#	bwrap_args+=(--file 11 /etc/passwd)
-#	bwrap_args+=(--file 12 /etc/group)
-#	(exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}") \
-#	  11< <(getent passwd $UID 65534) \
-#	  12< <(getent group $(id -g) 65534)
+	helper_args=()
+	helper_args+=("${helper_options[@]}")
+	helper_args+=(-A "$abs_project_dir/distribution")
+	helper_args+=(-A "$abs_package_dir/source")
+	helper_args+=(-a "$abs_package_dir/derived")
+	helper_args+=(-a "$abs_package_dir/install")
+	helper_args+=(-C "$abs_cur_dir")
 
 	if [ "$debug_level" -ge 1 ]; then
-		eecho "Running $bwrap_program ${bwrap_args[@]} ${args[@]}"
+		eecho "Running $helper_program ${helper_args[@]} ${args[@]}"
 	fi
-	exec "$bwrap_program" "${bwrap_args[@]}" "${args[@]}"
+	exec "$helper_program" "${helper_args[@]}" "${args[@]}"
 	exit_status=$?
 	;;
 nop|unsafe|*)

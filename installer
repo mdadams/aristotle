@@ -102,7 +102,7 @@ clean=0
 install_dir=
 assignments_dir=
 sandbox_mode=
-bwrap_option_spec=()
+sandbox_option_spec=()
 
 while getopts b:cd:a:m: opt; do
 	case $opt in
@@ -115,7 +115,7 @@ while getopts b:cd:a:m: opt; do
 	m)
 		sandbox_mode="$OPTARG";;
 	b)
-		bwrap_option_spec="$OPTARG";;
+		sandbox_option_spec="$OPTARG";;
 	*)
 		usage "invalid option";;
 	esac
@@ -140,7 +140,7 @@ if [ -z "$sandbox_mode" ]; then
 	fi
 fi
 
-bwrap_options=($(echo "$bwrap_option_spec")) || panic
+sandbox_options=($(echo "$sandbox_option_spec")) || panic
 
 umask 022
 
@@ -163,7 +163,7 @@ done
 sandbox_mode=bwrap
 cat > "$ari_config_file" <<- EOF
 sandbox_mode $sandbox_mode
-bwrap_options ${bwrap_options[@]}
+sandbox_options ${sandbox_options[@]}
 EOF
 [ $? -eq 0 ] || panic "cannot create configuration file"
 
