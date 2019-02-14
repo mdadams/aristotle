@@ -160,7 +160,6 @@ for dir in bin etc packages; do
 	fi
 done
 
-sandbox_mode=bwrap
 cat > "$ari_config_file" <<- EOF
 sandbox_mode $sandbox_mode
 sandbox_options ${sandbox_options[@]}
