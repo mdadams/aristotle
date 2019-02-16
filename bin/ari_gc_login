@@ -167,7 +167,7 @@ if [ "$use_token" -ne 0 ]; then
 	chmod g-rwx,o-rwx "$gc_token_file" || \
 	  panic "cannot set permissions for file $gc_token_file"
 else
-	echo "$gc_password" > "$gc_password_file" || \
+	cat > "$gc_password_file" <<< "$gc_password" || \
 	  panic "cannot create gc_password file"
 	# This following is just a failsafe (in case the umask is set wrong.
 	chmod g-rwx,o-rwx "$gc_password_file" || \

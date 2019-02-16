@@ -74,10 +74,10 @@ if [ -f "$gc_token_file" ]; then
 fi
 
 if [ -n "$gc_user" -a -n "$gc_token" ]; then
-	curl -s -H 'Authorization: token '"$gc_token" "$@"
+	curl -s -H @- <<< "Authorization: token $gc_token" "$@"
+	#curl -s -H 'Authorization: token '"$gc_token" "$@"
 elif [ -n "$gc_user" -a -f "$gc_password_file" ]; then
-	echo 'user = "'"$gc_user:$(cat $gc_password_file)"'"' | \
-	  curl -K - -s "$@"
+	curl -K - -s "$@" <<< 'user = "'"$gc_user:$(cat $gc_password_file)"'"'
 else
 	curl -u "$gc_user" -s "$@"
 fi

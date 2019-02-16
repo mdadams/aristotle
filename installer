@@ -90,9 +90,15 @@ usage()
 	    Set the default assignment-definition directory to \$assignments_dir.
 	-c
 	    Remove old files first.
+	-m \$sandbox_mode
+	    Set the sandbox mode to \$sandbox_mode.
+	-b \$sandbox_options
+	    Set the extra sandbox options to \$sandbox_options.
 	for example:
 	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
 	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
+	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current \\
+	      -c -m bwrap -b "-A $HOME/public/sde"
 	(avoid -c if symlink for assignments might be deleted)
 	EOF
 	exit 2
