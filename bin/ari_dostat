@@ -1,0 +1,197 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2019 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+eecho()
+{
+	echo "$@" 1>&2
+}
+
+panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+usage()
+{
+	echo "$@"
+	cat <<- EOF
+	usage:
+	$0 [options]
+
+	options:
+	-d \$work_dir
+	-r \$repo_regex
+	-o \$organization
+
+	examples:
+	$0 -d dostat -o uvic-seng475 -r 'tools-.*'
+	EOF
+	exit 2
+}
+
+debug_level="${ARI_DEBUG_LEVEL:-0}"
+organization=
+repo_regex=".*"
+package_regex=".*"
+work_dir=
+
+while getopts D:r:p:o:d: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	d)
+		work_dir="$OPTARG";;
+	r)
+		repo_regex="$OPTARG";;
+	p)
+		package_regex="$OPTARG";;
+	o)
+		organization="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$work_dir" ]; then
+	usage "no work directory specified"
+fi
+if [ -z "$organization" ]; then
+	usage "no organization specified"
+fi
+if [ -z "$repo_regex" ]; then
+	usage "no repositories specified"
+fi
+if [ -z "$package_regex" ]; then
+	usage "no packages specified"
+fi
+
+for dir in "$work_dir"; do
+	if [ ! -d "$dir" ]; then
+		mkdir -p "$dir" || panic "cannot make directory"
+	fi
+done
+
+first=1
+
+while true; do
+
+	repos=($(ari_gc_lsrepo -o "$organization" | \
+	  grep -E '^'"$repo_regex"'$')) || \
+	  panic "cannot get list of repositories"
+	eecho "number of repositories: ${#repos[@]}"
+	eecho "repositories:"
+	for repo in "${repos[@]}"; do
+		eecho "    $repo"
+	done
+	eecho
+
+	for repo in "${repos[@]}"; do
+
+		skip=0
+
+		git_repo="ssh://git@github.com/$organization/$repo.git"
+		#git_repo="https://github.com/$organization/$repo.git"
+		project_dir="$work_dir/$repo"
+		commit_id_file="$project_dir/commit_id"
+		workspace_dir="$project_dir/workspace"
+		tmp_workspace_dir="$workspace_dir-$repo"
+		new_commit_id_file="$workspace_dir/commit_id"
+		tmp_file="$workspace_dir/tmp_file"
+
+		if [ ! -d "$project_dir" ]; then
+			mkdir -p "$project_dir" || \
+			  panic "cannot make directory"
+		fi
+
+		if [ -d "$workspace_dir" ]; then
+			rm -rf "$workspace_dir" || \
+			  panic "cannot remove directory"
+		fi
+		if [ -d "$tmp_workspace_dir" ]; then
+			rm -rf "$tmp_workspace_dir" || \
+			  panic "cannot remove directory"
+		fi
+		ari_import -v -p "$workspace_dir-" -s master "$git_repo"
+		status=$?
+		if [ "$status" -ne 0 ]; then
+			eecho "skipping due to import failure"
+			skip=1
+		fi
+
+		if [ "$skip" -eq 0 ]; then
+			mv "$tmp_workspace_dir" "$workspace_dir" || \
+			  panic "cannot move"
+			if [ ! -d "$workspace_dir" ]; then
+				panic "error"
+			fi
+
+			if [ -f "$commit_id_file" ]; then
+				commit_id=$(cat "$commit_id_file") || \
+				  panic "cannot get commit ID"
+			else
+				commit_id=
+			fi
+			new_commit_id=$(cat "$new_commit_id_file") || \
+			  panic "cannot get commit ID"
+			if [ -z "$new_commit_id" ]; then
+				panic "bad commit ID"
+			fi
+
+			eecho "COMMITS $commit_id $new_commit_id"
+			if [ -n "$commit_id" -a "$commit_id" = "$new_commit_id" ]; then
+				eecho "repository unchanged"
+				skip=1
+			fi
+		fi
+		if [ "$skip" -eq 0 ]; then
+			ari_process -v "$workspace_dir"
+			status=$?
+
+			packages=($((cd "$workspace_dir" && find . -mindepth 1 -maxdepth 1 -name 'package-*' -type d -print) | sed -e 's/^\.\/package-//'))
+			eecho "packages: ${packages[@]}"
+
+			cat > "$tmp_file" <<- EOF
+			Status Report:
+
+			This is a test $$.
+			Exit status: $status
+			EOF
+			[ $? -eq 0 ] || panic "cat failed"
+			buffer=$(cat "$tmp_file") || panic "cat failed"
+#			hub issue create -m "$buffer" || panic "hub failed"
+
+			echo "$new_commit_id" > "$commit_id_file" || panic
+		fi
+
+		if [ "$first" -eq 0 ]; then
+			sleep 10
+		fi
+	done
+
+	first=0
+
+done
