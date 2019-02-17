@@ -63,6 +63,10 @@ while getopts D:v option; do
 done
 shift $((OPTIND - 1))
 
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
 if [ ! -f "$gc_login_file" ]; then
 	panic "not logged in"
 fi
@@ -72,11 +76,18 @@ if [ -f "$gc_token_file" ]; then
 	gc_id=$(cat "$gc_id_file") || panic "cannot get id"
 	gc_user=$(cat "$gc_username_file") || panic "cannot get user"
 
+	if [ "$debug_level" -ge 1 ]; then
+		echo "access token: $gc_token"
+		echo "ID: $gc_id"
+		echo "user: $gc_user"
+	fi
+
+	echo "Basic authentication (via username and password) required"
 	output=$(curl -s -i -X DELETE -u "$gc_user" \
 	  "https://api.github.com/authorizations/$gc_id")
 	curl_status=$?
-	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
-	if [ "$verbose" -ge 1 ]; then
+	http_status=$(egrep -e '^Status:' <<< "$output" | awk '{print $2;}' -)
+	if [ "$debug_level" -ge 1 ]; then
 		echo "curl status: $curl_status"
 		echo "HTTP status: $http_status"
 		echo "output:"

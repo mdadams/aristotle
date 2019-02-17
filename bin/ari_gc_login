@@ -59,14 +59,9 @@ debug_level=0
 gc_user="$user_name"
 verbose=0
 name="$user_name@$host_name"
+use_token=1
 
-# The curl command does not seem to allow the argument to the -H option
-# to be read from a file.  This leads to the use of access tokens being
-# a security concern on many Unix systems.
-# So, do not use tokens unless you know what you are doing.
-use_token=0
-
-while getopts D:u:vn: option; do
+while getopts D:u:vn:pt option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -76,6 +71,10 @@ while getopts D:u:vn: option; do
 		gc_user="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
+	p)
+		use_token=0;;
+	t)
+		use_token=1;;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -104,7 +103,7 @@ if [ "$use_token" -ne 0 ]; then
 	  https://api.github.com/authorizations)
 	curl_status=$?
 
-	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
+	http_status=$(egrep -e '^Status:' <<< "$output" | awk '{print $2;}' -)
 
 	if [ "$debug_level" -ge 1 ]; then
 		echo "curl status: $curl_status"
@@ -113,13 +112,13 @@ if [ "$use_token" -ne 0 ]; then
 		echo "$output"
 	fi
 
-	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
+	if [[ "$curl_status" -ne 0 || "$http_status" != 2?? ]]; then
 		panic "operation failed"
 	fi
 
-	http_header=$(echo "$output" | curl_select header) || \
+	http_header=$(curl_select header <<< "$output") || \
 	  panic "cannot get HTTP header"
-	json_data=$(echo "$output" | curl_select body) || \
+	json_data=$(curl_select body <<< "$output") || \
 	  panic "cannot get JSON data"
 
 	if [ "$debug_level" -ge 1 ]; then
@@ -129,9 +128,9 @@ if [ "$use_token" -ne 0 ]; then
 		echo "$http_header"
 	fi
 
-	gc_token=$(echo "$json_data" | jq -r '.token') || \
+	gc_token=$(jq -r '.token' <<< "$json_data") || \
 	  panic "cannot get token"
-	gc_id=$(echo "$json_data" | jq -r '.id') || \
+	gc_id=$(jq -r '.id' <<< "$json_data") || \
 	  panic "cannot get id"
 
 else
@@ -154,14 +153,14 @@ for file in "$gc_username_file" "$gc_password_file" "$gc_token_file" \
 	fi
 done
 
-echo "$gc_user" > "$gc_username_file" || \
+cat >"$gc_username_file" <<< "$gc_user" || \
   panic "cannot create gc_username file"
 if [ "$use_token" -ne 0 ]; then
-	echo "$gc_id" > "$gc_id_file" || \
+	cat > "$gc_id_file" <<< "$gc_id" || \
 	  panic "cannot create gc_id file"
-	echo "$gc_token" > "$gc_token_file" || \
+	cat > "$gc_token_file" <<< "$gc_token" || \
 	  panic "cannot create gc_token file"
-	echo "$gc_note" > "$gc_note_file" || \
+	cat >"$gc_note_file" <<< "$gc_note" || \
 	  panic "cannot create gc_note file"
 	# This following is just a failsafe (in case the umask is set wrong.
 	chmod g-rwx,o-rwx "$gc_token_file" || \
@@ -173,4 +172,4 @@ else
 	chmod g-rwx,o-rwx "$gc_password_file" || \
 	  panic "cannot set permissions for file $gc_password_file"
 fi
-echo "logged in" > "$gc_login_file"
+cat > "$gc_login_file" <<< "logged in"
