@@ -382,3 +382,48 @@ line_terminator()
 	grep -q -U -e $'\r' "$in_file" && format=dos
 	echo "$format"
 }
+
+min()
+{
+	local first="$1"
+	local second="$2"
+	echo $(( first < second ? first : second ))
+}
+
+max()
+{
+	local first="$1"
+	local second="$2"
+	echo $(( first > second ? first : second ))
+}
+
+compare_versions()
+{
+	local x=($(tr '.' ' ' <<< "$1"))
+	local y=($(tr '.' ' ' <<< "$2"))
+	local xv
+	local yv
+	local i=0
+	local result=0
+	while [ "$i" -lt 3 ]; do
+		if [ "$i" -lt "${#x[@]}" ]; then
+			xv="${x[$i]}"
+		else
+			xv=0
+		fi
+		if [ "$i" -lt "${#y[@]}" ]; then
+			yv="${y[$i]}"
+		else
+			yv=0
+		fi
+		if [ "$xv" -lt "$yv" ]; then
+			result="-1"
+			break
+		elif [ "$xv" -gt "$yv" ]; then
+			result="1"
+			break
+		fi
+		i=$((i + 1))
+	done
+	echo "$result"
+}

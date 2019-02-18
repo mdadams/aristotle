@@ -67,7 +67,7 @@ usage()
 
 user_name=$(whoami) || panic "cannot determine user"
 host_name=$(hostname) || panic "cannot determine hostname"
-tmp_dir_template="/tmp/ari_git_copyrepo-${user_name}@${host_name}-$$-XXXXXXXX"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_git_copyrepo-${user_name}@${host_name}-$$-XXXXXXXX"
 
 ari_mktemp="$cmd_dir/ari_mktemp"
 

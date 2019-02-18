@@ -46,6 +46,12 @@ usage()
 	exit 2
 }
 
+cmd_dir=$(dirname "$0") || \
+  panic "cannot get command directory"
+cmd_dir=$(realpath "$cmd_dir") || \
+  panic "cannot get realpath of command directory"
+ari_mktemp="$cmd_dir/ari_mktemp"
+
 user=$(whoami) || panic "cannot get user name"
 host=$(hostname) || panic "cannot get host name"
 cur_dir=$(pwd) || panic "cannot get current directory"
@@ -55,7 +61,7 @@ repo_url="https://github.com/projectatomic/bubblewrap.git"
 version=master
 install_dir=
 
-tmp_dir="${TMPDIR:-/tmp}/ari_install_bwrap-$user-$host-$$"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_install_bwrap-$user-$host-$$-XXXXXXXX"
 
 while getopts d:v: opt; do
 	case "$opt" in
@@ -87,6 +93,9 @@ abs_install_dir=$(readlink -f "$install_dir") || \
 umask 022
 
 make_opts=()
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
 
 top_dir="$tmp_dir/bwrap-$version"
 src_dir="$top_dir/src"

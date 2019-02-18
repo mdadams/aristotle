@@ -76,15 +76,12 @@ usage()
 
 ari_timeout="$cmd_dir/ari_timeout"
 ari_sandbox="$cmd_dir/ari_sandbox"
+ari_mktemp="$cmd_dir/ari_mktemp"
 
 user="$whoami"
 host=$(hostname)
-tmp_dir=/tmp/ari_run_catch_app-$user@$host-$$
-console_file="$tmp_dir/console"
-error_file="$tmp_dir/error"
-log_file="$tmp_dir/log"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_run_catch_app-$user@$host-$$-XXXXXXXX"
 debug_level=${ARI_DEBUG_LEVEL:-0}
-tests_file="$tmp_dir/tests"
 
 ################################################################################
 #
@@ -155,7 +152,13 @@ passed_tests=()
 failed_tests=()
 missing_summaries=()
 
-mkdir -p "$tmp_dir" || panic "cannot make directory $tmp_dir"
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+#mkdir -p "$tmp_dir" || panic "cannot make directory $tmp_dir"
+console_file="$tmp_dir/console"
+error_file="$tmp_dir/error"
+log_file="$tmp_dir/log"
+tests_file="$tmp_dir/tests"
 
 # Determine the total number of test cases.
 # A Catch2 application should generate output like the following:

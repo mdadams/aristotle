@@ -154,7 +154,7 @@ user_name=`whoami` || panic "cannot get user name"
 host_name=`hostname` || panic "cannot get host name"
 unique_id="$user_name@$host_name@$$"
 
-tmp_dir_template="/tmp/ari_report-$unique_id-XXXXXXXX"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_report-$unique_id-XXXXXXXX"
 
 reproducible=0
 reproducible_report=0

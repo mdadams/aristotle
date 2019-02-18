@@ -33,9 +33,16 @@ is_valid_utf8()
 	recode UTF-8..Latin-1 > /dev/null 2> /dev/null
 }
 
+cmd_dir=$(dirname "$0") || \
+  panic "cannot get command directory"
+cmd_dir=$(realpath "$cmd_dir") || \
+  panic "cannot get realpath of command directory"
+
+ari_mktemp="$cmd_dir/ari_mktemp"
+
 user=$(whoami) || panic "cannot get user name"
 host=$(hostname) || panic "cannot get host name"
-tmp_dir="/tmp/ari_textpreproc-$user@$host-$$"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_textpreproc-$user@$host-$$-XXXXXXXX"
 
 max_columns=80
 
@@ -53,7 +60,9 @@ while getopts Rc: option; do
 done
 shift $((OPTIND - 1))
 
-mkdir -p "$tmp_dir" || \
+#mkdir -p "$tmp_dir" || \
+#  panic "cannot make temporary directory"
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
   panic "cannot make temporary directory"
 
 tmp_file_1="$tmp_dir/file_1"

@@ -85,7 +85,7 @@ fi
 
 user=$(whoami) || panic "cannot determine user"
 host=$(hostname) || panic "cannot determine hostname"
-tmp_dir_template="/tmp/assignment_precheck-${user}@${host}-$$-XXXXXXXX"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/assignment_precheck-${user}@${host}-$$-XXXXXXXX"
 
 ari_precheck="$cmd_dir/ari_precheck"
 ari_mktemp="$cmd_dir/ari_mktemp"

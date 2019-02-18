@@ -59,7 +59,7 @@ assignment=
 debug_level=0
 out_prefix=
 verbose=0
-delay=1
+delay=2
 
 while getopts D:o:p:a:vq option; do
 	case "$option" in

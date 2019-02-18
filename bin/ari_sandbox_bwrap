@@ -114,13 +114,16 @@ args=("$@")
 # Perform some initial setup.
 ################################################################################
 
-cmd_dir=$(dirname "$0") || panic "cannot get command directory"
+cmd_dir=$(dirname "$0") || \
+  panic "cannot get command directory"
+cmd_dir=$(realpath "$cmd_dir") || \
+  panic "cannot get real path of command directory"
 user=$(whoami) || panic "cannot get user name"
 host=$(hostname) || panic "cannot get host name"
 
-tmp_dir="${SDE_TMPDIR:-/tmp}/$program_name-$user@$host-$$"
-empty_file="$tmp_dir/empty_file"
-empty_dir="$tmp_dir/empty_dir"
+ari_mktemp="$cmd_dir/ari_mktemp"
+
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_sandbox_bwrap-$user@$host-$$-XXXXXXXX"
 
 if [ -z "$bwrap_program" ]; then
 	bwrap_program="$cmd_dir/bwrap"
@@ -294,7 +297,11 @@ fi
 # Run sandboxed application.
 ################################################################################
 
-mkdir -p "$tmp_dir" || panic "cannot make temporary directory"
+#mkdir -p "$tmp_dir" || panic "cannot make temporary directory"
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+empty_file="$tmp_dir/empty_file"
+empty_dir="$tmp_dir/empty_dir"
 
 if [ -e "$empty_file" ]; then
 	panic "file should not exist"
