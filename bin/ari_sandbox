@@ -61,8 +61,8 @@ bwrap_program="$abs_cmd_dir/bwrap"
 ################################################################################
 
 mode=
-package="${ARI_PACKAGE}"
-test="${ARI_TEST}"
+package=
+test=
 type=
 
 while getopts D:d:p:m:B:ut:k: option; do
@@ -96,6 +96,44 @@ fi
 if [ "$debug_level" -ge 10 ]; then
 	set -xv
 fi
+
+# Should the following be added?
+#if [ -z "$mode" ]; then
+#	if [ -n "$ARI_SANDBOX_MODE" ]; then
+#		mode="${ARI_SANDBOX_MODE}"
+#	fi
+#fi
+
+if [ -z "$type" ]; then
+	if [ -z "$ARI_SANDBOX_TYPE" ]; then
+		usage "no sandbox type specified"
+	fi
+	test="${ARI_SANDBOX_TYPE}"
+fi
+
+if [ -z "$package" ]; then
+	if [ -z "$ARI_PACKAGE" ]; then
+		usage "no package specified"
+	fi
+	package="${ARI_PACKAGE}"
+fi
+
+case "$ARI_SANDBOX_TYPE" in
+configure)
+	;;
+build)
+	;;
+test)
+	if [ -z "$test" ]; then
+		if [ -z "$ARI_TEST" ]; then
+			usage "no test specified"
+		fi
+		test="${ARI_TEST}"
+	fi
+	;;
+*)
+	;;
+esac
 
 if [ -n "${ARI_SANDBOXED+x}" ]; then
 	panic "nesting of sandboxes is not supported"
