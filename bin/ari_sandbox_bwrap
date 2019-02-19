@@ -57,6 +57,15 @@ max()
 	echo $((x > y ? x : y))
 }
 
+cleanup()
+{
+	if [ "$cleanup" -ne 0 ]; then
+		if [ -n "$tmp_dir" -a -d "$tmp_dir" ]; then
+			rm -rf "$tmp_dir"
+		fi
+	fi
+}
+
 ################################################################################
 # Process command line.
 ################################################################################
@@ -74,8 +83,9 @@ debug_level="${ARI_DEBUG_LEVEL:-0}"
 op_list=()
 cur_dir=
 bwrap_program=
+cleanup=1
 
-while getopts b:C:A:a:d:t:D: option; do
+while getopts zb:C:A:a:d:t:D: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -99,6 +109,8 @@ while getopts b:C:A:a:d:t:D: option; do
 		op_list+=(tmp_add)
 		op_list+=("$OPTARG")
 		;;
+	z)
+		cleanup=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -114,6 +126,8 @@ args=("$@")
 # Perform some initial setup.
 ################################################################################
 
+trap cleanup EXIT
+
 cmd_dir=$(dirname "$0") || \
   panic "cannot get command directory"
 cmd_dir=$(realpath "$cmd_dir") || \
@@ -124,6 +138,7 @@ host=$(hostname) || panic "cannot get host name"
 ari_mktemp="$cmd_dir/ari_mktemp"
 
 tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_sandbox_bwrap-$user@$host-$$-XXXXXXXX"
+tmp_dir=
 
 if [ -z "$bwrap_program" ]; then
 	bwrap_program="$cmd_dir/bwrap"
@@ -329,8 +344,6 @@ if [ "$debug_level" -ge 1 ]; then
 fi
 "$bwrap_program" "${options[@]}" "${args[@]}"
 exit_status=$?
-
-rm -rf "$tmp_dir"
 
 exit "$exit_status"
 

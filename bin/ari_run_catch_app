@@ -42,6 +42,18 @@ quote_test_name()
 	# sed -e 's/\./\\./g'
 }
 
+cleanup()
+{
+	if [ "$cleanup" -ne 0 ]; then
+		if [ -n "$tmp_dir" -a -d "$tmp_dir" ]; then
+			rm -f "$tests_file"
+			rm -f "$console_file"
+			rm -f "$error_file"
+			rmdir "$tmp_dir"
+		fi
+	fi
+}
+
 usage()
 {
 	echo "$@"
@@ -58,6 +70,8 @@ usage()
 	    Enable the saving of the results.
 	-D \$debug_level
 	    Set the debug level to \$debug_level.
+	-z
+	    Disable cleanup (for debugging).
 
 	exit status:
 	0 ... Catch2 application ran to completion and all tests passed
@@ -81,6 +95,7 @@ ari_mktemp="$cmd_dir/ari_mktemp"
 user="$whoami"
 host=$(hostname)
 tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_run_catch_app-$user@$host-$$-XXXXXXXX"
+tmp_dir=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 
 ################################################################################
@@ -93,8 +108,9 @@ result=0
 result_file="$ARI_TEST_RESULT_FILE"
 timeout=
 extras=0
+cleanup=1
 
-while getopts AID:c:rt:f:X opt; do
+while getopts zAID:c:rt:f:X opt; do
 	case $opt in
 	A)
 		run_individually=0;;
@@ -112,6 +128,8 @@ while getopts AID:c:rt:f:X opt; do
 		extras=1;;
 	D)
 		debug_level="$OPTARG";;
+	z)
+		cleanup=0;;
 	\?)
 		usage
 		break;;
@@ -147,6 +165,8 @@ fi
 ################################################################################
 #
 ################################################################################
+
+trap cleanup EXIT
 
 passed_tests=()
 failed_tests=()
@@ -633,11 +653,6 @@ fi
 ################################################################################
 # Cleanup
 ################################################################################
-
-rm -f "$tests_file"
-rm -f "$console_file"
-rm -f "$error_file"
-rmdir "$tmp_dir"
 
 ################################################################################
 # Exit

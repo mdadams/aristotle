@@ -23,6 +23,17 @@
 # 
 # __END_OF_LICENSE__
 
+eecho()
+{
+	echo "$@" 1>&2
+}
+
+panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
 count_lines()
 {
 	awk 'END {print NR;}' -
@@ -33,11 +44,18 @@ is_valid_utf8()
 	recode UTF-8..Latin-1 > /dev/null 2> /dev/null
 }
 
-cmd_dir=$(dirname "$0") || \
-  panic "cannot get command directory"
+cleanup()
+{
+	#eecho "cleaning up"
+	if [ -n "$tmp_dir" -a -d "$tmp_dir" ]; then
+		rm -rf "$tmp_dir" || \
+		  echo "warning: cannot remove temporary directory $tmp_dir"
+	fi
+}
+
+cmd_dir=$(dirname "$0") || panic "cannot get command directory"
 cmd_dir=$(realpath "$cmd_dir") || \
   panic "cannot get realpath of command directory"
-
 ari_mktemp="$cmd_dir/ari_mktemp"
 
 user=$(whoami) || panic "cannot get user name"
@@ -60,8 +78,8 @@ while getopts Rc: option; do
 done
 shift $((OPTIND - 1))
 
-#mkdir -p "$tmp_dir" || \
-#  panic "cannot make temporary directory"
+trap cleanup EXIT
+
 tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
   panic "cannot make temporary directory"
 
@@ -69,8 +87,7 @@ tmp_file_1="$tmp_dir/file_1"
 tmp_file_2="$tmp_dir/file_2"
 tmp_file="$tmp_file_1"
 
-cat > "$tmp_file_1" || \
-  panic "cannot get input"
+cat > "$tmp_file_1" || panic "cannot get input"
 tmp_file="$tmp_file_1"
 
 num_lines=$(count_lines < "$tmp_file") || \
@@ -90,7 +107,5 @@ if [ "$utf8" -ne 0 ]; then
 fi
 
 fold -w "$max_columns" -s < "$tmp_file" || panic "cannot wrap lines"
-
-rm -rf "$tmp_dir" || echo "warning: cannot remove temporary directory $tmp_dir"
 
 exit 0
