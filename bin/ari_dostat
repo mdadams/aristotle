@@ -34,6 +34,35 @@ panic()
 	exit 1
 }
 
+print_status()
+{
+	local package
+	local operation
+	local target
+	local status
+	if [ $# -eq 4 ]; then
+		package="$1"
+		operation="$2"
+		target="$3"
+		status="$4"
+#		case "$status" in
+#		0|1)
+#			status="COM or OK";;
+#		3)
+#			status="INC";;
+#		*)
+#			status="UNK";;
+#		esac
+	else
+		package="Package"
+		operation="Operation"
+		target="Target"
+		status="Status"
+	fi
+	printf "%-16.16s %-9.9s %-16.16s %-s\n" \
+	  "$package" "$operation" "$target" "$status"
+}
+
 usage()
 {
 	echo "$@"
@@ -53,7 +82,9 @@ usage()
 }
 
 cmd_dir=$(dirname "$0") || panic "cannot get command directory"
+cmd_dir=$(realpath "$cmd_dir") || panic
 ari_hub="$cmd_dir/ari_hub"
+ari_info="$cmd_dir/ari_info"
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 organization=
@@ -61,8 +92,9 @@ repo_regex=".*"
 package_regex=".*"
 work_dir=
 branch=master
+enable_issues=1
 
-while getopts D:r:p:o:d: option; do
+while getopts D:r:p:o:d:n option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -74,6 +106,8 @@ while getopts D:r:p:o:d: option; do
 		package_regex="$OPTARG";;
 	o)
 		organization="$OPTARG";;
+	n)
+		enable_issues=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -93,6 +127,8 @@ if [ -z "$package_regex" ]; then
 	usage "no packages specified"
 fi
 
+work_dir=$(realpath "$work_dir") || panic
+
 for dir in "$work_dir"; do
 	if [ ! -d "$dir" ]; then
 		mkdir -p "$dir" || panic "cannot make directory"
@@ -101,7 +137,15 @@ done
 
 first=1
 
+iter_no=0
 while true; do
+
+
+	cat <<- EOF
+	############################################################
+	Iteration: $iter_no
+	############################################################
+	EOF
 
 	repo_names=($(ari_gc_lsrepo -o "$organization" | \
 	  grep -E '^'"$repo_regex"'$')) || \
@@ -111,7 +155,6 @@ while true; do
 	for repo_name in "${repo_names[@]}"; do
 		eecho "    $repo_name"
 	done
-	eecho
 
 	for repo_name in "${repo_names[@]}"; do
 
@@ -120,11 +163,14 @@ while true; do
 		repo_url="ssh://git@github.com/$organization/$repo_name.git"
 		#repo_url="https://github.com/$organization/$repo_name.git"
 		item_dir="$work_dir/$repo_name"
-		commit_id_file="$item_dir/commit_id"
+		old_commit_id_file="$item_dir/commit_id"
 		workspace_dir="$item_dir/workspace"
 		repo_dir="$item_dir/repository"
-		new_commit_id_file="$workspace_dir/commit_id"
+		commit_id_file="$workspace_dir/commit_id"
+		issue_dir="$item_dir/issues"
 		tmp_file="$workspace_dir/tmp_file"
+		time="$(date +%Y-%m-%d-%H-%M-%S)" || panic "cannot get time"
+		issue_file="$issue_dir/issue-$time"
 
 		cat <<- EOF
 		############################################################
@@ -132,10 +178,12 @@ while true; do
 		############################################################
 		EOF
 
-		if [ ! -d "$item_dir" ]; then
-			mkdir -p "$item_dir" || \
-			  panic "cannot make directory $item_dir"
-		fi
+		for dir in "$item_dir" "$issue_dir"; do
+			if [ ! -d "$dir" ]; then
+				mkdir -p "$dir" || \
+				  panic "cannot make directory $dir"
+			fi
+		done
 
 		for dir in "$repo_dir" "$workspace_dir"; do
 			if [ -d "$dir" ]; then
@@ -176,26 +224,29 @@ while true; do
 
 		if [ "$skip" -eq 0 ]; then
 
-			if [ -f "$commit_id_file" ]; then
-				commit_id=$(cat "$commit_id_file") || \
+			project="$(cat "$workspace_dir/assignment_id")" || panic
+
+			if [ -f "$old_commit_id_file" ]; then
+				old_commit_id="$(cat "$old_commit_id_file")" || \
 				  panic "cannot get commit ID"
 			else
-				commit_id=
+				old_commit_id=
 			fi
-			new_commit_id=$(cat "$new_commit_id_file") || \
+			commit_id="$(cat "$commit_id_file")" || \
 			  panic "cannot get commit ID"
-			if [ -z "$new_commit_id" ]; then
+			if [ -z "$commit_id" ]; then
 				panic "bad commit ID"
 			fi
 
 			if [ "$debug_level" -ge 1 ]; then
-				eecho "old commit ID: $commit_id"
-				eecho "new commit ID: $new_commit_id"
+				eecho "old commit ID: $old_commit_id"
+				eecho "new commit ID: $commit_id"
 			fi
-			if [ -n "$commit_id" -a "$commit_id" = "$new_commit_id" ]; then
+			if [ -n "$old_commit_id" -a "$old_commit_id" = "$commit_id" ]; then
 				eecho "repository unchanged"
 				skip=1
 			fi
+
 		fi
 
 		if [ "$skip" -eq 0 ]; then
@@ -203,9 +254,12 @@ while true; do
 			ari_process -v "$workspace_dir"
 			status=$?
 
-			packages=($((cd "$workspace_dir" && \
-			  find . -mindepth 1 -maxdepth 1 -name 'package-*' \
-			  -type d -print) | sed -e 's/^\.\/package-//'))
+			packages=($("$ari_info" -a "$project" packages)) || \
+			  panic "cannot get package list"
+
+			#packages=($((cd "$workspace_dir" && \
+			#  find . -mindepth 1 -maxdepth 1 -name 'package-*' \
+			#  -type d -print) | sed -e 's/^\.\/package-//'))
 
 			if [ "$debug_level" -ge 1 ]; then
 				eecho "packages:"
@@ -214,27 +268,94 @@ while true; do
 				done
 			fi
 
-			cat > "$tmp_file" <<- EOF
-			Status Report:
+			printf "" > "$tmp_file" || panic
+			printf "%s\n\n" "Status: Commit $commit_id" >> "$tmp_file" || \
+			  panic
 
-			This is a test $$.
-			Exit status: $status
-			EOF
-			[ $? -eq 0 ] || panic "cat failed"
-			buffer=$(cat "$tmp_file") || panic "cat failed"
-			#hub issue create -m "$buffer" || panic "hub failed"
+			printf "Commit ID: $commit_id\n" >> "$tmp_file" || \
+			  panic
+#			printf "\n" >> "$tmp_file" || \
+#			  panic
+#			cat >> "$tmp_file" <<- EOF
+#			Commit ID: $commit_id
+#
+#			The following status values are possible:
+#			 * OK: no errors
+#			 * COM: at least one failure; operation completed
+#			 * INC: operation did not complete
+#			 * UNK: unknown error occurred
+#
+#			EOF
+#			[ $? -ne 0 ] || panic
+			printf "<pre>\n" >> "$tmp_file" || \
+			  panic
+			print_status >> "$tmp_file" || \
+			  panic
+			for package in "${packages[@]}"; do
+				package_dir="$workspace_dir/package-$package"
+				build_targets=($("$ari_info" \
+				  -a "$project" "package-$package/builds")) || \
+				  panic "cannot get build targets"
+				test_targets=($("$ari_info" \
+				  -a "$project" "package-$package/tests")) || \
+				  panic "cannot get test targets"
+				status_file="$package_dir/configure/status"
+				if [ -f "$status_file" ]; then
+					status="$(cat "$status_file")"
+				else
+					status=
+				fi
+				print_status \
+				  "$package" "configure" "---" "$status" >> "$tmp_file" || \
+				  panic
+				for target in "${build_targets[@]}"; do
+					status_file="$package_dir/build-$target/status"
+					if [ -f "$status_file" ]; then
+						status="$(cat "$status_file")"
+					else
+						status=
+					fi
+					print_status \
+					  "$package" "build" "$target" "$status" >> "$tmp_file" || \
+					  panic
+				done
+				for target in "${test_targets[@]}"; do
+					status_file="$package_dir/test-$target/status"
+					if [ -f "$status_file" ]; then
+						status="$(cat "$status_file")"
+					else
+						status=
+					fi
+					print_status \
+					  "$package" "test" "$target" "$status" >> "$tmp_file" || \
+					  panic
+				done
+			done
+			printf "</pre>\n" >> "$tmp_file" || \
+			  panic
+			message="$(cat "$tmp_file")" || panic "cat failed"
+			eecho "##########"
+			eecho "$message"
+			eecho "##########"
 
-			(cd "$repo_dir" && "$ari_hub" issue)
+			cp "$tmp_file" "$issue_file" || panic
 
-			echo "$new_commit_id" > "$commit_id_file" || panic
+			if [ "$enable_issues" -ne 0 ]; then
+				issue_url="$( (cd "$repo_dir" && \
+				  "$ari_hub" issue create -m "$message") )"
+			fi
+
+			echo "$commit_id" > "$old_commit_id_file" || panic
 
 		fi
 
 		if [ "$first" -eq 0 ]; then
+			eecho "sleeping"
 			sleep 10
 		fi
 	done
 
 	first=0
+	iter_no=$((iter_no + 1))
 
 done
