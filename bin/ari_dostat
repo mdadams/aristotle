@@ -52,11 +52,15 @@ usage()
 	exit 2
 }
 
+cmd_dir=$(dirname "$0") || panic "cannot get command directory"
+ari_hub="$cmd_dir/ari_hub"
+
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 organization=
 repo_regex=".*"
 package_regex=".*"
 work_dir=
+branch=master
 
 while getopts D:r:p:o:d: option; do
 	case "$option" in
@@ -99,55 +103,78 @@ first=1
 
 while true; do
 
-	repos=($(ari_gc_lsrepo -o "$organization" | \
+	repo_names=($(ari_gc_lsrepo -o "$organization" | \
 	  grep -E '^'"$repo_regex"'$')) || \
 	  panic "cannot get list of repositories"
-	eecho "number of repositories: ${#repos[@]}"
+	eecho "number of repositories: ${#repo_names[@]}"
 	eecho "repositories:"
-	for repo in "${repos[@]}"; do
-		eecho "    $repo"
+	for repo_name in "${repo_names[@]}"; do
+		eecho "    $repo_name"
 	done
 	eecho
 
-	for repo in "${repos[@]}"; do
+	for repo_name in "${repo_names[@]}"; do
 
 		skip=0
 
-		git_repo="ssh://git@github.com/$organization/$repo.git"
-		#git_repo="https://github.com/$organization/$repo.git"
-		project_dir="$work_dir/$repo"
-		commit_id_file="$project_dir/commit_id"
-		workspace_dir="$project_dir/workspace"
-		tmp_workspace_dir="$workspace_dir-$repo"
+		repo_url="ssh://git@github.com/$organization/$repo_name.git"
+		#repo_url="https://github.com/$organization/$repo_name.git"
+		item_dir="$work_dir/$repo_name"
+		commit_id_file="$item_dir/commit_id"
+		workspace_dir="$item_dir/workspace"
+		repo_dir="$item_dir/repository"
 		new_commit_id_file="$workspace_dir/commit_id"
 		tmp_file="$workspace_dir/tmp_file"
 
-		if [ ! -d "$project_dir" ]; then
-			mkdir -p "$project_dir" || \
-			  panic "cannot make directory"
+		cat <<- EOF
+		############################################################
+		Processing $repo_name
+		############################################################
+		EOF
+
+		if [ ! -d "$item_dir" ]; then
+			mkdir -p "$item_dir" || \
+			  panic "cannot make directory $item_dir"
 		fi
 
-		if [ -d "$workspace_dir" ]; then
-			rm -rf "$workspace_dir" || \
-			  panic "cannot remove directory"
+		for dir in "$repo_dir" "$workspace_dir"; do
+			if [ -d "$dir" ]; then
+				rm -rf "$dir" || panic "cannot remove directory $dir"
+			fi
+			mkdir -p "$dir" || \
+			  panic "cannot make directory $dir"
+		done
+
+		git clone -q "$repo_url" "$repo_dir" || \
+		  panic "cannot clone repository $repo_url"
+
+		# Check for an empty repository.
+		test -n "$(GIT_DIR="$repo_dir/.git" git rev-list -n 1 --all)"
+		if [ $? -ne 0 ]; then
+			empty_repo=1
+		else
+			empty_repo=0
 		fi
-		if [ -d "$tmp_workspace_dir" ]; then
-			rm -rf "$tmp_workspace_dir" || \
-			  panic "cannot remove directory"
-		fi
-		ari_import -v -p "$workspace_dir-" -s master "$git_repo"
-		status=$?
-		if [ "$status" -ne 0 ]; then
-			eecho "skipping due to import failure"
+		if [ "$empty_repo" -ne 0 ]; then
+			eecho "warning: skipping empty repository"
 			skip=1
 		fi
 
 		if [ "$skip" -eq 0 ]; then
-			mv "$tmp_workspace_dir" "$workspace_dir" || \
-			  panic "cannot move"
-			if [ ! -d "$workspace_dir" ]; then
-				panic "error"
+
+			(cd "$repo_dir" && git checkout -q "$branch") || \
+			  panic "cannot checkout"
+			ari_import1 -v -t git_working_tree -i "$repo_dir" \
+			  -d "$workspace_dir"
+			status=$?
+			if [ "$status" -ne 0 ]; then
+				eecho "warning: skipping $repo_name due to import failure"
+				skip=1
 			fi
+
+		fi
+
+		if [ "$skip" -eq 0 ]; then
 
 			if [ -f "$commit_id_file" ]; then
 				commit_id=$(cat "$commit_id_file") || \
@@ -161,18 +188,31 @@ while true; do
 				panic "bad commit ID"
 			fi
 
-			eecho "COMMITS $commit_id $new_commit_id"
+			if [ "$debug_level" -ge 1 ]; then
+				eecho "old commit ID: $commit_id"
+				eecho "new commit ID: $new_commit_id"
+			fi
 			if [ -n "$commit_id" -a "$commit_id" = "$new_commit_id" ]; then
 				eecho "repository unchanged"
 				skip=1
 			fi
 		fi
+
 		if [ "$skip" -eq 0 ]; then
+
 			ari_process -v "$workspace_dir"
 			status=$?
 
-			packages=($((cd "$workspace_dir" && find . -mindepth 1 -maxdepth 1 -name 'package-*' -type d -print) | sed -e 's/^\.\/package-//'))
-			eecho "packages: ${packages[@]}"
+			packages=($((cd "$workspace_dir" && \
+			  find . -mindepth 1 -maxdepth 1 -name 'package-*' \
+			  -type d -print) | sed -e 's/^\.\/package-//'))
+
+			if [ "$debug_level" -ge 1 ]; then
+				eecho "packages:"
+				for i in "${packages[@]}"; do
+					eecho "    $i"
+				done
+			fi
 
 			cat > "$tmp_file" <<- EOF
 			Status Report:
@@ -182,9 +222,12 @@ while true; do
 			EOF
 			[ $? -eq 0 ] || panic "cat failed"
 			buffer=$(cat "$tmp_file") || panic "cat failed"
-#			hub issue create -m "$buffer" || panic "hub failed"
+			#hub issue create -m "$buffer" || panic "hub failed"
+
+			(cd "$repo_dir" && "$ari_hub" issue)
 
 			echo "$new_commit_id" > "$commit_id_file" || panic
+
 		fi
 
 		if [ "$first" -eq 0 ]; then

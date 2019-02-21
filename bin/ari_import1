@@ -62,8 +62,9 @@ in_type=
 in_subtype=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verify_sig=0
+verbose=0
 
-while getopts D:d:i:a:t:s:c option; do
+while getopts D:d:i:a:t:s:cv option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -79,6 +80,8 @@ while getopts D:d:i:a:t:s:c option; do
 		in_subtype="$OPTARG";;
 	c)
 		verify_sig=1;;
+	v)
+		verbose=$((verbose + 1));;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -161,7 +164,7 @@ git)
 	  panic "cannot clone repository $in_source"
 
 	# Check for an empty repository.
-	GIT_DIR="$dist_dir/.git" git rev-list -n 1 --all >& /dev/null
+	test -n "$(GIT_DIR="$dist_dir/.git" git rev-list -n 1 --all)"
 	if [ $? -ne 0 ]; then
 		empty_repo=1
 	else
@@ -220,6 +223,38 @@ git)
 	  -type f -a \( -name .gitignore -o -name .gitattributes \) \
 	  -exec rm -f {} \; || \
 	  panic "cannot remove Git files (e.g., .gitignore and .gitattributes)"
+	;;
+
+git_working_tree)
+	if [ ! -d "$in_source" ]; then
+		panic "input $in_source is not a directory"
+	fi
+	if [ ! -d "$in_source/.git" ]; then
+		panic "input $in_source is not a Git working tree"
+	fi
+
+	# Copy complete contents of working tree.
+	cp -a "$in_source/." "$dist_dir" || panic "cannot copy tree"
+
+	# Remove any Git repository directories.
+	find "$dist_dir" \
+	  -type d -a -name .git -prune -exec rm -rf {} \; ||
+	  panic "cannot remove Git repository directories"
+
+	# Remove any special Git files (e.g., .gitignore and .gitattributes).
+	find "$dist_dir" \
+	  -type f -a \( -name .gitignore -o -name .gitattributes \) \
+	  -exec rm -f {} \; || \
+	  panic "cannot remove Git files (e.g., .gitignore and .gitattributes)"
+
+	# Get the commit ID that has been checked out.
+	commit_id=$( (chdir "$in_source" && git rev-parse HEAD) ) || \
+	  panic "cannot get commit ID of HEAD"
+	echo "$commit_id" > "$commit_id_file" || panic
+
+	# Get the commit history.
+	(chdir "$in_source" && git log "$commit_id") > "$commit_history_file" || \
+	  panic "cannot get commit history"
 	;;
 
 directory|dir)

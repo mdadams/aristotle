@@ -1,0 +1,79 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2019 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+# Reference: https://github.com/stephencelis/ghi/wiki/FAQ
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+debug_level="${ARI_DEBUG_LEVEL:-0}"
+
+ghi_program=ghi
+
+user_config_dir="$HOME/.aristotle"
+gc_login_file="$user_config_dir/gc_login"
+gc_username_file="$user_config_dir/gc_username"
+gc_password_file="$user_config_dir/gc_password"
+gc_token_file="$user_config_dir/gc_token"
+
+if [ ! -f "$gc_login_file" ]; then
+	panic "not logged in"
+fi
+
+gc_user=
+if [ -f "$gc_username_file" ]; then
+	gc_user=$(cat "$gc_username_file") || gc_user=
+fi
+gc_token=
+if [ -f "$gc_token_file" ]; then
+	gc_token=$(cat "$gc_token_file") || gc_token=
+fi
+#gc_password=
+#if [ -f "$gc_password_file" ]; then
+#	gc_password=$(cat "$gc_password_file") || gc_password=
+#fi
+
+if [ -n "$gc_token" ]; then
+	auth_method="token"
+	export GITHUB_TOKEN="$gc_token"
+#elif [ -n "$gc_user" -a -n "$gc_password" ]; then
+#	auth_method="username and password"
+#	export GITHUB_USER="$gc_user"
+#	export GITHUB_PASSWORD="$gc_password"
+else
+	panic "no available authentication method"
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "Using $auth_method for authentication"
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	export HUB_VERBOSE=1
+fi
+
+export HUB_PROTOCOL=https
+export GITHUB_HOST=github.com
+exec "$ghi_program" "$@"
