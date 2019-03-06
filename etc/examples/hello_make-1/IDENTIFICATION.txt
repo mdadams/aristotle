@@ -1,5 +1,7 @@
 name "Jane Doe"
 student_id "V12345678"
 email "jdoe@uvic.ca"
+course "ECE100"
 section "T01"
+term "2019-09"
 assignment "hello_make"

@@ -99,4 +99,19 @@ while [ "$rec_no" -lt "$num_recs" ]; do
 	rec_no=$((rec_no + 1))
 done
 
+case "$query_key" in
+course)
+	if [ -n "$ARI_DEFAULT_COURSE" ]; then
+		echo "$ARI_DEFAULT_COURSE"
+		exit 0
+	fi
+	;;
+term)
+	if [ -n "$ARI_DEFAULT_TERM" ]; then
+		echo "$ARI_DEFAULT_TERM"
+		exit 0
+	fi
+	;;
+esac
+
 panic "unable to find key $query_key"

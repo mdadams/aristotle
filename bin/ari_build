@@ -638,8 +638,6 @@ for package in "${packages[@]}"; do
 		build_time=$("$ari_calc" -f "%.1f" \
 		  "$build_end_time - $build_start_time") || \
 		  panic "cannot calculate build time"
-		build_log_length=$(count_lines "$build_log_file") || \
-		  panic "cannot get build log length"
 
 		executable_files=($("$ari_info" -a "$project" \
 		  "package-$package/build-$target/executables")) || \
@@ -650,10 +648,15 @@ for package in "${packages[@]}"; do
 				if [ "$build_status" -eq 0 ]; then
 					build_status=100
 				fi
+				#echo "ERROR: build failed to generate executable $file" >> \
+				#  "$summary_2_file"
 				echo "ERROR: build failed to generate executable $file" >> \
-				  "$summary_2_file"
+				  "$build_log_file"
 			fi
 		done
+
+		build_log_length=$(count_lines "$build_log_file") || \
+		  panic "cannot get build log length"
 
 		echo "$build_status" > "$build_status_file" || \
 		  panic "cannot make build status file"

@@ -116,16 +116,24 @@ The following are properties of the assignment as a whole:
     a file called IDENTIFICATION.txt.
 
     student_id_regex
-    A regular expression that a student ID must match in order to be deemed
-    valid.
-    Default value: If no value is specified, a student ID is always deemed
-    to be valid.
+    A POSIX extended regular expression that a student ID must match in
+    order to be deemed valid.
+    Default value: ".*" (i.e., match anything)
+
+    course_regex
+    A POSIX extended regular expression that a course must match in order
+    to be deemed valid.
+    Default value: ".*" (i.e., match anything)
 
     section_regex
-    A regular expression that a course/lab/tutorial section must match in order
-    to be deemed valid.
-    Default value: If no value is specified, a section is always deemed to be
-    valid.
+    A POSIX extended regular expression that a course/lab/tutorial section
+    must match in order to be deemed valid.
+    Default value: ".*" (i.e., match anything)
+
+    term_regex
+    A POSIX extended regular expression that the school term must match
+    in order to be deemed valid.
+    Default value: ".*" (i.e., match anything)
 
 The following are properties of a package within an assignment:
 
@@ -335,6 +343,9 @@ The fields in the IDENTIFICATION.txt file are as follows:
 
     email
     The email address of the student.
+
+    course
+    The name of the course in which the student is registered.
 
     section
     The lecture/lab/tutorial section of the course in which the student

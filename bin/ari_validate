@@ -67,6 +67,9 @@ ari_student_info="$cmd_dir/ari_student_info"
 ari_validate_line="$cmd_dir/ari_validate_line"
 ari_find_assignment="$cmd_dir/ari_find_assignment"
 
+# Note: Maybe it would be better to keep this disabled.
+enable_term=0
+
 project_dir=$("$ari_locate" -q) || project_dir=
 packages=()
 debug_level=${ARI_DEBUG_LEVEL:-0}
@@ -158,14 +161,16 @@ for index in "${!required_files[@]}"; do
 done
 
 # Ensure that no pathnames contain unprintable characters.
-num_files=$(LC_ALL=C find "$dist_dir" -name '*[![:print:]]*' | wc -l) || panic
+num_files=$(LC_ALL=C find "$dist_dir" -name '*[![:print:]]*' | wc -l) || \
+  panic "find failed"
 if [ "$num_files" -gt 0 ]; then
 	eecho "ERROR: file/directory names cannot contain unprintable characters"
 	num_errors=$((num_errors + 1))
 fi
 
 # Ensure that no pathnames contain whitespace characters.
-num_files=$(LC_ALL=C find "$dist_dir" -name '*[[:space:]]*' | wc -l) || panic
+num_files=$(LC_ALL=C find "$dist_dir" -name '*[[:space:]]*' | wc -l) || \
+  panic "find failed"
 if [ "$num_files" -gt 0 ]; then
 	eecho "ERROR: file/directory names cannot contain whitespace characters"
 	num_errors=$((num_errors + 1))
@@ -173,12 +178,16 @@ fi
 
 all_files=($(chdir "$dist_dir" && find . -mindepth 1 | sed -e 's/^\.\///'))
 for file in "${all_files[@]}"; do
+	target="$dist_dir/$file"
 	valid=unknown
 	for pattern in "${whitelisted_files[@]}"; do
 		if [ "$debug_level" -ge 1 ]; then
 			echo "whitelist: testing $file $pattern"
 		fi
 		[[ "$file" == $pattern ]] && valid=true
+		if [ -d "$target" ]; then
+			[[ "$file/" == $pattern ]] && valid=true
+		fi
 	done
 	if [ "$valid" = unknown ]; then
 		for pattern in "${blacklisted_files[@]}"; do
@@ -200,7 +209,9 @@ done
 student_name_file="$project_dir/student_name"
 student_id_file="$project_dir/student_id"
 student_email_file="$project_dir/student_email"
+course_file="$project_dir/course"
 section_file="$project_dir/section"
+term_file="$project_dir/term"
 submission_source_file="$project_dir/submission_source"
 commit_id_file="$project_dir/commit_id"
 
@@ -232,12 +243,22 @@ if [ -z "$student_info_program" ]; then
 	student_info_program="$ari_student_info"
 fi
 
-student_id_regex=$("$ari_info" -a "$project" student_id_regex) || panic
-section_regex=$("$ari_info" -a "$project" section_regex) || panic
+student_id_regex=$("$ari_info" -a "$project" student_id_regex) || \
+  panic "cannot get student_id_regex"
+course_regex=$("$ari_info" -a "$project" course_regex) || \
+  panic "cannot get course_regex"
+section_regex=$("$ari_info" -a "$project" section_regex) || \
+  panic "cannot get section_regex"
+if [ "$enable_term" -ne 0 ]; then
+	term_regex=$("$ari_info" -a "$project" term_regex) || \
+	  panic "cannot get term_regex"
+fi
 
 if [ "$debug_level" -ge 1 ]; then
 	eecho "student ID regex $student_id_regex"
+	eecho "course regex $course_regex"
 	eecho "section regex $section_regex"
+	eecho "term regex $term_regex"
 fi
 
 student_name=$( \
@@ -253,9 +274,10 @@ if [ "$student_name_status" -eq 0 ]; then
 	student_name_status=$?
 fi
 if [ "$student_name_status" -eq 0 ]; then
-	echo "$student_name" > "$student_name_file"
+	echo "$student_name" > "$student_name_file" || \
+	  panic "cannot create student-name file"
 else
-	student_name="Unknown"
+	student_name="unknown"
 	eecho "ERROR: cannot determine student name"
 	num_errors=$((num_errors + 1))
 fi
@@ -282,11 +304,12 @@ if [ "$student_id_status" -eq 0 -a -n "$student_id_regex" ]; then
 	fi
 fi
 if [ "$student_id_status" -ne 0 ]; then
-	student_id="Unknown"
+	student_id="unknown"
 	eecho "ERROR: cannot determine student ID"
 	num_errors=$((num_errors + 1))
 fi
-echo "$student_id" > "$student_id_file"
+echo "$student_id" > "$student_id_file" || \
+  panic "cannot create student ID file"
 
 student_email=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
@@ -301,12 +324,48 @@ if [ "$student_email_status" -eq 0 ]; then
 	student_email_status=$?
 fi
 if [ "$student_email_status" -eq 0 ]; then
-	echo "$student_email" > "$student_email_file"
+	echo "$student_email" > "$student_email_file" || \
+	  panic "cannot create student email file"
 else
-	student_email="Unknown"
+	student_email="unknown"
 	eecho "ERROR: cannot determine student email address"
 	num_errors=$((num_errors + 1))
 fi
+
+course=$( \
+  ARI_SUBMISSION_SOURCE="$submission_source" \
+  ARI_WORKSPACE_DIR="$project_dir" \
+  ARI_EXTRAS_DIR="$extras_dir" \
+  ARI_DIST_DIR="$dist_dir" \
+  "$student_info_program" course \
+  )
+course_status=$?
+if [ "$course_status" -eq 0 ]; then
+	"$ari_validate_line" -e '[[:print:]]+' "$course"
+	course_status=$?
+fi
+if [ "$course_status" -eq 0 -a -n "$course_regex" ]; then
+	"$ari_validate_line" -D "$debug_level" -e "$course_regex" "$course"
+	course_status=$?
+	if [ "$course_status" -ne 0 ]; then
+		eecho "ERROR: invalid course"
+		num_errors=$((num_errors + 1))
+	fi
+fi
+if [ "$course_status" -eq 0 -a -n "$ARI_COURSE" ]; then
+	if [ "$course" != "$ARI_COURSE" ]; then
+		eecho "ERROR: course is specified as $course but should be $ARI_COURSE"
+		num_errors=$((num_errors + 1))
+		course_status=1
+	fi
+fi
+if [ "$course_status" -ne 0 ]; then
+	course="unknown"
+	eecho "ERROR: cannot determine course"
+	num_errors=$((num_errors + 1))
+fi
+echo "$course" > "$course_file" || \
+  panic "cannot create course file"
 
 section=$( \
   ARI_SUBMISSION_SOURCE="$submission_source" \
@@ -329,11 +388,49 @@ if [ "$section_status" -eq 0 -a -n "$section_regex" ]; then
 	fi
 fi
 if [ "$section_status" -ne 0 ]; then
-	section="Unknown"
+	section="unknown"
 	eecho "ERROR: cannot determine section"
 	num_errors=$((num_errors + 1))
 fi
-echo "$section" > "$section_file"
+echo "$section" > "$section_file" || \
+  panic "cannot create section file"
+
+if [ "$enable_term" -ne 0 ]; then
+	term=$( \
+	  ARI_SUBMISSION_SOURCE="$submission_source" \
+	  ARI_WORKSPACE_DIR="$project_dir" \
+	  ARI_EXTRAS_DIR="$extras_dir" \
+	  ARI_DIST_DIR="$dist_dir" \
+	  "$student_info_program" term \
+	  )
+	term_status=$?
+	if [ "$term_status" -eq 0 ]; then
+		"$ari_validate_line" -e '[[:print:]]+' "$term"
+		term_status=$?
+	fi
+	if [ "$term_status" -eq 0 -a -n "$term_regex" ]; then
+		"$ari_validate_line" -D "$debug_level" -e "$term_regex" "$term"
+		term_status=$?
+		if [ "$term_status" -ne 0 ]; then
+			eecho "ERROR: invalid term"
+			num_errors=$((num_errors + 1))
+		fi
+	fi
+	if [ "$term_status" -eq 0 -a -n "$ARI_TERM" ]; then
+		if [ "$term" != "$ARI_TERM" ]; then
+			eecho "ERROR: term is specified as $term but should be $ARI_TERM"
+			num_errors=$((num_errors + 1))
+			term_status=1
+		fi
+	fi
+	if [ "$term_status" -ne 0 ]; then
+		term="unknown"
+		eecho "ERROR: cannot determine term"
+		num_errors=$((num_errors + 1))
+	fi
+	echo "$term" > "$term_file" || \
+	  panic "cannot create term file"
+fi
 
 saved_ifs="$IFS"
 IFS=$'\ca'

@@ -241,6 +241,8 @@ student_id=$(cat "$project_dir/student_id") || \
   panic "cannot get student ID"
 student_email=$(cat "$project_dir/student_email") || \
   panic "cannot get email address"
+course=$(cat "$project_dir/course") || \
+  panic "cannot get course"
 section=$(cat "$project_dir/section") || \
   panic "cannot get section"
 
@@ -577,6 +579,7 @@ cat >> "$summary_file" <<- EOF
 Name: $student_name
 Student ID: $student_id
 Email: $student_email
+Course: $course
 Section: $section
 
 Assignment ID: $project
