@@ -576,10 +576,10 @@ for package in "${packages[@]}"; do
 		make)
 			build_start_time=$(time_since_epoch) || \
 			  panic "cannot get start time"
-			(ARI_WORKSPACE_DIR="$project_dir" \
+			(chdir "$derived_dir" && \
+			  ARI_WORKSPACE_DIR="$project_dir" \
 			  ARI_PACKAGE="$package" \
 			  ARI_SANDBOX_TYPE=build \
-			  chdir "$derived_dir" && \
 			  "$ari_sandbox" "${ari_sandbox_opts[@]}" \
 			  env "${build_env[@]}" make "$target") |& \
 			  "$ari_tee" "${tee_opts[@]}" \

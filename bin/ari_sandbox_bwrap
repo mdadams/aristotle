@@ -236,14 +236,19 @@ done
 # For example, we might need access to:
 #     /etc/alternatives
 #     /etc/resolv.conf
-#options+=(--ro-bind /etc /etc)
-options+=(--dir /etc)
-for i in alternatives resolv.conf; do
-	target="/etc/$i"
-	if [ -e "$target" ]; then
-		options+=(--ro-bind "$target" "$target")
-	fi
-done
+#     /etc/passwd (e.g., for whoami)
+#     /etc/man_db.conf (for man)
+#options+=(--dir /etc)
+#for i in alternatives resolv.conf; do
+#	target="/etc/$i"
+#	if [ -e "$target" ]; then
+#		options+=(--ro-bind "$target" "$target")
+#	fi
+#done
+# It is probably better to simply mount all of /etc readonly, since it may be
+# difficult to reliably identify all files/directories under /etc that need to
+# be made acessible.
+options+=(--ro-bind /etc /etc)
 
 options+=(--dir /var)
 options+=(--symlink ../tmp var/tmp)
