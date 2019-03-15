@@ -36,8 +36,20 @@ usage()
 {
 	echo "$@"
 	cat <<- EOF
-	usage: $0 [options]
+	usage: $0 [options] command
 	options:
+	-d \$workspace_dir
+	    Set the workspace directory to \$workspace_dir.
+	-p \$package
+	    Set the package to \$package.
+	-k \$sandbox_type
+	    Set the sandbox type to \$sandbox_type.
+	    (valid values: configure, build, test, special)
+	-m \$sandbox_mode
+	    Set the sandbox mode to \$sandbox_mode.
+	    (valid values: nop, unsafe, bwrap)
+	-B \$bwrap_path
+	    Set the Bubblewrap program path to \$bwrap_path.
 	-D debug_level
 	    Set the debug level to debug_level.
 	EOF
@@ -90,7 +102,7 @@ shift $((OPTIND - 1))
 args=("$@")
 
 if [ "${#args[@]}" -eq 0 ]; then
-	panic "no command specified"
+	usage "no command specified"
 fi
 
 if [ "$debug_level" -ge 10 ]; then
@@ -147,10 +159,10 @@ if [ "$sandbox_type" != special ]; then
 	fi
 
 	if [ -z "$project_dir" ]; then
-		panic "no workspace directory specified"
+		usage "no workspace directory specified"
 	fi
 	if [ -z "$package" ]; then
-		panic "no package specified"
+		usage "no package specified"
 	fi
 
 	abs_project_dir=$(readlink -f "$project_dir") || panic
