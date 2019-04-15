@@ -31,10 +31,18 @@ abs_cmd_dir=$(absolute_pathname "$cmd_dir") || \
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir
@@ -140,6 +148,8 @@ for package in "${packages[@]}"; do
 	derived_dir="$package_dir/derived"
 	install_dir="$package_dir/install"
 
+	generate_dir="$package_dir/generate"
+	generate_status_file="$generate_dir/status"
 	configure_dir="$package_dir/configure"
 	configure_status_file="$configure_dir/status"
 	configure_log_file="$configure_dir/log"
@@ -159,6 +169,22 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 		panic "missing package $package"
+	fi
+
+	missing_dependencies=1
+	if [ -f "$generate_status_file" ]; then
+		buffer=$(cat "$generate_status_file") || \
+		  panic "cannot get contents of status file"
+		generate_status="$buffer"
+		if [ "$generate_status" -eq 0 ]; then
+			missing_dependencies=0
+		fi
+	fi
+	if [ "$missing_dependencies" -ne 0 ]; then
+		if [ "$verbose" -ge 2 ]; then
+			eecho "skipped package $package for which generate failed"
+		fi
+		continue
 	fi
 
 	targets=($("$ari_info" -a "$project" "package-$package/tests")) || \

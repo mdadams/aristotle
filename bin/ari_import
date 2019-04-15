@@ -29,10 +29,18 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] input_source..."
-	Options:
+	Usage
+	=====
+
+	$0 [options] input_source..."
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir

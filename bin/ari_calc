@@ -25,10 +25,19 @@
 
 usage()
 {
-	echo "$@" 1>&2
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] expression...
-	options:
+	Usage
+	=====
+	$0 [options] expression...
+
+	Options
+	=======
+
+	-f \$format
+	    Set printf-like formatting string for result to \$format.
 	EOF
 	exit 2
 }

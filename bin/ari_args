@@ -35,6 +35,14 @@ print()
 	fi
 }
 
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	exit 2
+}
+
 use_stderr=0
 
 while getopts e option; do

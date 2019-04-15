@@ -33,9 +33,14 @@ perror()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] \$source_repo \$target_repo
+	Usage
+	=====
+
+	$0 [options] \$source_repo \$target_repo
 
 	Description
 	===========

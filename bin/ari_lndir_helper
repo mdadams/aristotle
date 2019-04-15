@@ -6,6 +6,14 @@ panic()
 	exit 1
 }
 
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	exit 2
+}
+
 verbose=0
 show_only=0
 src_root_dir=

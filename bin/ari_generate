@@ -30,10 +30,18 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir
@@ -55,13 +63,16 @@ ari_info="$abs_cmd_dir/ari_info"
 ari_locate="$abs_cmd_dir/ari_locate"
 ari_lndir="$abs_cmd_dir/ari_lndir"
 ari_find_assignment="$abs_cmd_dir/ari_find_assignment"
+ari_calc="$abs_cmd_dir/ari_calc"
 
 project_dir=$("$ari_locate" -q) || project_dir=
 packages=()
 debug_level=${ARI_DEBUG_LEVEL:-0}
 skip_optional=0
+verbose=0
+reproducible=0
 
-while getopts D:d:p:O option; do
+while getopts D:d:p:OvR option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -71,6 +82,10 @@ while getopts D:d:p:O option; do
 		packages+=("$OPTARG");;
 	O)
 		skip_optional=1;;
+	v)
+		verbose=$((verbose + 1));;
+	R)
+		reproducible=1;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -109,10 +124,18 @@ if [ "$debug_level" -ge 1 ]; then
 	eecho "packages: ${packages[@]}"
 fi
 
+if [ "$verbose" -ge 1 ]; then
+	print_status
+fi
+
 for package in "${packages[@]}"; do
 
 	package_dir="$project_dir/package-$package"
 	source_dir="$package_dir/source"
+	generate_dir="$package_dir/generate"
+	generate_log_file="$generate_dir/log"
+	generate_status_file="$generate_dir/status"
+	generate_time_file="$generate_dir/time"
 
 	if [ -d "$package_dir" ]; then
 		warn "skipping generation of (previously-generated) package $package"
@@ -139,7 +162,7 @@ for package in "${packages[@]}"; do
 
 	mkdir -p "$package_dir" || panic "cannot make directory $package_dir"
 
-	for dir in source derived configure install; do
+	for dir in generate source derived configure install; do
 		target_dir="$package_dir/$dir"
 		mkdir -p "$target_dir" || panic "cannot make directory $target_dir"
 	done
@@ -161,6 +184,8 @@ for package in "${packages[@]}"; do
 		panic "cannot get generate script"
 	fi
 
+	generate_start_time=$(time_since_epoch) || \
+	  panic "cannot get start time"
 	if [ "${#generate_program[@]}" -ge 1 ]; then
 		if [ ! -x "${generate_program[0]}" ]; then
 			panic "cannot find executable ${generate_program[0]}"
@@ -176,8 +201,8 @@ for package in "${packages[@]}"; do
 		  ARI_BIN_DIR="$abs_cmd_dir" \
 		  ARI_DIST_DIR="$dist_dir" \
 		  ARI_SOURCE_DIR="$source_dir" \
-		  "${generate_program[@]}" || \
-		  panic "generate failed"
+		  "${generate_program[@]}" >& "$generate_log_file"
+		generate_status=$?
 	else
 		if [ "$debug_level" -ge 1 ]; then
 			eecho "Invoking default generate"
@@ -187,9 +212,28 @@ for package in "${packages[@]}"; do
 		#  panic "cannot make link tree"
 		# The following simply creates a link to the distribution directory:
 		if [ -d "$source_dir" ]; then
-			rm -rf "$source_dir" || panic "cannot remove directory $source_dir"
+			rm -rf "$source_dir" || \
+			  panic "cannot remove directory $source_dir"
 		fi
-		ln -s ../distribution "$source_dir" || panic "cannot make symbolic link $source_dir"
+		ln -s ../distribution "$source_dir" || \
+		  panic "cannot make symbolic link $source_dir"
+		echo -n > "$generate_log_file"
+		generate_status=0
+	fi
+	echo "$generate_status" > "$generate_status_file"
+	generate_end_time=$(time_since_epoch) || \
+	  panic "cannot get end time"
+	generate_time=$("$ari_calc" -f "%.1f" \
+	  "$generate_end_time - $generate_start_time") || \
+	  panic "cannot calculate generate time"
+	echo "$generate_time" > "$generate_time_file" || \
+	  panic "cannot generate time file"
+	generate_log_length=$(count_lines "$generate_log_file") || \
+	  panic "cannot get generate log length"
+	if [ "$verbose" -ge 1 ]; then
+		print_status \
+		  "$reproducible" "$package" "generate" "---" \
+		  "$generate_status" "$generate_time" "" "$generate_log_length"
 	fi
 
 	for target in "${build_targets[@]}"; do

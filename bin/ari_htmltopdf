@@ -26,6 +26,26 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	cat <<- EOF
+	Usage
+	=====
+
+	$0 [options] in_url
+
+	Options
+	=======
+
+	-o \$out_file
+	-D \$debug_level
+	EOF
+	exit 2
+}
+
 while getopts o:D: option; do
 	case "$option" in
 	D)

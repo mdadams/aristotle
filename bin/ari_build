@@ -30,12 +30,21 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
 	$0
 	Build one or more packages.
-	usage: $0 [options]
-	options:
+
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir
@@ -160,9 +169,9 @@ print_status >> "$summary_1_file"
 
 touch "$summary_2_file"
 
-if [ "$verbose" -ge 1 ]; then
-	print_status
-fi
+#if [ "$verbose" -ge 1 ]; then
+#	print_status
+#fi
 
 for package in "${packages[@]}"; do
 
@@ -170,6 +179,8 @@ for package in "${packages[@]}"; do
 	source_dir="$package_dir/source"
 	derived_dir="$package_dir/derived"
 	install_dir="$package_dir/install"
+	generate_dir="$package_dir/generate"
+	generate_status_file="$generate_dir/status"
 	configure_dir="$package_dir/configure"
 	configure_status_file="$configure_dir/status"
 	configure_log_file="$configure_dir/log"
@@ -190,6 +201,22 @@ for package in "${packages[@]}"; do
 			continue
 		fi
 		panic "missing package $package"
+	fi
+
+	missing_dependencies=1
+	if [ -f "$generate_status_file" ]; then
+		buffer=$(cat "$generate_status_file") || \
+		  panic "cannot get contents of status file"
+		generate_status="$buffer"
+		if [ "$generate_status" -eq 0 ]; then
+			missing_dependencies=0
+		fi
+	fi
+	if [ "$missing_dependencies" -ne 0 ]; then
+		if [ "$verbose" -ge 2 ]; then
+			eecho "skipped package $package for which generate failed"
+		fi
+		continue
 	fi
 
 	build_type=$("$ari_info" \

@@ -29,11 +29,18 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	$0
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-n
 	    Show the operations that would be performed.
 	-v
@@ -188,6 +195,35 @@ while [ $# -gt 0 ]; do
 			fi
 			rm -f "$dst_path" || \
 			  panic "cannot remove file to be replaced $dst_path"
+			cp "$src_path" "$dst_path" || \
+			  panic "cannot copy file $src_path to $dst_path"
+		fi
+		shift 1
+		;;
+
+	create_or_replace)
+		if [ $# -lt 1 ]; then
+			panic "no source/destination file specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		if [ -z "$src_dir" ]; then
+			panic "source directory not set"
+		fi
+		spec="$1"
+		src=$(get_nth_word_special 1 "$spec") || panic
+		dst=$(get_nth_word_special 2 "$spec") || panic
+		src_path="$src_dir/$src"
+		dst_path="$cur_dir/$dst"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			eecho "copying $src_path over $dst_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			if [ -L "$dst_path" -o -f "$dst_path" ]; then
+				rm -f "$dst_path" || \
+				  panic "cannot remove file to be replaced $dst_path"
+			fi
 			cp "$src_path" "$dst_path" || \
 			  panic "cannot copy file $src_path to $dst_path"
 		fi

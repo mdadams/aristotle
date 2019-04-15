@@ -56,12 +56,18 @@ cleanup()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage:
+	Usage
+	=====
+
 	$0 [options]
 
-	options:
+	Options
+	=======
+
 	-c \$program
 	    Set the program to run to \$program.
 	-t \$timeout
@@ -73,7 +79,9 @@ usage()
 	-z
 	    Disable cleanup (for debugging).
 
-	exit status:
+	Exit Status
+	===========
+
 	0 ... Catch2 application ran to completion and all tests passed
 	1 ... Catch2 application ran to completion but some tests failed
 	2 ... Catch2 application did not run to completion but summary generated

@@ -72,10 +72,27 @@ cleanup()
 
 usage()
 {
-	if [ $# -ne 0 ]; then
-		echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
 	fi
-	echo "usage: $0 [options] program_path"
+	cat <<- EOF
+	Usage
+	=====
+
+	$0 [options] program_path
+
+	Options
+	=======
+
+	-D \$debug_level
+	-b \$bwrap_program
+	-C \$cur_dir
+	-a \$bind_path
+	-A \$ro_bind_path
+	-d \$blank_path
+	-t \$tmp_path
+	-z
+	EOF
 	exit 2
 }
 

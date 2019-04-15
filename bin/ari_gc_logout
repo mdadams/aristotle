@@ -28,10 +28,18 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-v
@@ -50,13 +58,16 @@ gc_note_file="$user_config_dir/gc_note"
 
 debug_level=0
 verbose=0
+force=0
 
-while getopts D:v option; do
+while getopts D:vf option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
+	f)
+		force=1;;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -94,7 +105,11 @@ if [ -f "$gc_token_file" ]; then
 		echo "$output"
 	fi
 	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
-		panic "operation failed"
+		if [ "$force" -eq 0 ]; then
+			panic "operation failed"
+		else
+			eecho "warning: remote token deletion failed"
+		fi
 	fi
 fi
 

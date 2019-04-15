@@ -82,8 +82,14 @@ usage()
 {
 	echo "$@"
 	cat <<- EOF
-	usage: $0 [options] -d \$install_dir
-	options:
+	Usage
+	=====
+
+	$0 [options] -d \$install_dir
+
+	Options
+	=======
+
 	-d \$install_dir
 	    Set the install directory to \$install_dir.
 	-a \$assignments_dir
@@ -94,11 +100,14 @@ usage()
 	    Set the sandbox mode to \$sandbox_mode.
 	-b \$sandbox_options
 	    Set the extra sandbox options to \$sandbox_options.
-	for example:
-	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
-	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
-	    $0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current \\
-	      -c -m bwrap -b "-A $HOME/public/sde"
+
+	Examples
+	========
+
+	$0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current
+	$0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current -c
+	$0 -d ${SDE_TOP_DIR-${HOME}/public/sde}/packages/aristotle-current \\
+	  -c -m bwrap -b "-A $HOME/public/sde"
 	(avoid -c if symlink for assignments might be deleted)
 	EOF
 	exit 2

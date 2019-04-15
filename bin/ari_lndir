@@ -34,11 +34,19 @@ panic()
 
 usage()
 {
-	echo "$@" 1>&2
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] from_dir [to_dir]
+	Usage
+	=====
+
+	$0 [options] from_dir [to_dir]
 	to_dir defaults to the current working directory
-	options:
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-n

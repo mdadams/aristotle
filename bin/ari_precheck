@@ -36,10 +36,18 @@ fatal_error()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] input_source...
-	options:
+	Usage
+	=====
+
+	$0 [options] input_source...
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir
@@ -68,7 +76,9 @@ usage()
 	-A
 	    Do not skip optional items.
 
-	Exit status:
+	Exit Status
+	===========
+
 	0 all items successfully processed
 	1 one or more items skipped
 	2 bad usage

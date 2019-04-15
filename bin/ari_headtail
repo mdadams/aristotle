@@ -25,6 +25,9 @@
 
 usage()
 {
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
 	Usage
 	=====

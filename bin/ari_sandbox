@@ -34,10 +34,18 @@ function panic()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] command
-	options:
+	Usage
+	=====
+
+	$0 [options] command
+
+	Options
+	=======
+
 	-d \$workspace_dir
 	    Set the workspace directory to \$workspace_dir.
 	-p \$package

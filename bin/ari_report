@@ -116,10 +116,18 @@ add_log()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d project_dir
@@ -297,10 +305,18 @@ for package in "${packages[@]}"; do
 	derived_dir="$package_dir/derived"
 	install_dir="$package_dir/install"
 
+	generate_dir="$package_dir/generate"
+	generate_status_file="$generate_dir/status"
+	generate_log_file="$generate_dir/log"
+	generate_time_file="$generate_dir/time"
 	configure_dir="$package_dir/configure"
 	configure_status_file="$configure_dir/status"
 	configure_log_file="$configure_dir/log"
 	configure_time_file="$configure_dir/time"
+
+	tmp_generate_log_file=$(get_tmp_file generate) || \
+	  panic "cannot get temporary file"
+	tmp_file_no=$((tmp_file_no + 1))
 
 	tmp_configure_log_file=$(get_tmp_file configure) || \
 	  panic "cannot get temporary file"
@@ -308,6 +324,11 @@ for package in "${packages[@]}"; do
 
 	optional=$("$ari_info" -a "$project" package-"$package"/optional) || \
 	  panic "cannot get optional"
+
+	if [ "$debug_level" -ge 1 ]; then
+		echo "package: $package"
+		echo "optional: $optional"
+	fi
 
 	if [ "$optional" -ne 0 -a "$skip_optional" -ne 0 ]; then
 		if [ "$debug_level" -ge 1 ]; then
@@ -329,14 +350,20 @@ for package in "${packages[@]}"; do
 	test_targets=($("$ari_info" -a "$project" package-"$package"/tests)) || \
 	  panic "cannot get test targets"
 
-	"$ari_textpreproc" < "$configure_log_file" > "$tmp_configure_log_file" || \
-	  panic "cannot process log file"
-	configure_status=$(cat "$configure_status_file") || \
-	  panic "cannot get configure status"
-	configure_log_length=$(count_lines "$tmp_configure_log_file") || \
-	  panic "cannot get log length"
-	configure_time=$(cat "$configure_time_file") || \
-	  panic "cannot get time"
+	if [ "$debug_level" -ge 1 ]; then
+		if [ "${#build_targets[@]}" -gt 0 ]; then
+			echo "build targets:"
+			for i in "${build_targets[@]}"; do
+				printf "    %s\n" "$i"
+			done
+		fi
+		if [ "${#test_targets[@]}" -gt 0 ]; then
+			echo "test targets:"
+			for i in "${test_targets[@]}"; do
+				printf "    %s\n" "$i"
+			done
+		fi
+	fi
 
 	############################################################
 	# package information
@@ -352,19 +379,64 @@ for package in "${packages[@]}"; do
 	EOF
 
 	############################################################
+	# generate results
+	############################################################
+
+	"$ari_textpreproc" < "$generate_log_file" > "$tmp_generate_log_file" || \
+	  panic "cannot process log file"
+	generate_status=$(cat "$generate_status_file") || \
+	  panic "cannot get generate status"
+	generate_log_length=$(count_lines "$tmp_generate_log_file") || \
+	  panic "cannot get log length"
+	generate_time=$(cat "$generate_time_file") || \
+	  panic "cannot get time"
+
+	if [ "$verbose" -ge 1 ]; then
+		print_status "$reproducible" "$package" generate "---" \
+		  "$generate_status" "$generate_time" "" "$generate_log_length"
+	fi
+	print_status "$reproducible_report" "$package" generate "---" \
+	  "$generate_status" "$generate_time" "" "$generate_log_length" \
+	  >> "$summary_1_file"
+	if [ "$generate_status" -ne 0 ]; then
+		add_log "$tmp_generate_log_file" "$generate_log_length" \
+		  "Log: $package generate"
+	fi
+
+	############################################################
 	# configure results
 	############################################################
 
-	if [ "$verbose" -ge 1 ]; then
-		print_status "$reproducible" "$package" configure "---" \
-		  "$configure_status" "$configure_time" "" "$configure_log_length"
-	fi
-	print_status "$reproducible_report" "$package" configure "---" \
-	  "$configure_status" "$configure_time" "" "$configure_log_length" \
-	  >> "$summary_1_file"
-	if [ "$configure_status" -ne 0 ]; then
-		add_log "$tmp_configure_log_file" "$configure_log_length" \
-		  "Log: $package configure"
+	if [ -f "$configure_status_file" ]; then
+		"$ari_textpreproc" \
+		  < "$configure_log_file" > "$tmp_configure_log_file" || \
+		  panic "cannot process log file"
+		configure_status=$(cat "$configure_status_file") || \
+		  panic "cannot get configure status"
+		configure_log_length=$(count_lines "$tmp_configure_log_file") || \
+		  panic "cannot get log length"
+		configure_time=$(cat "$configure_time_file") || \
+		  panic "cannot get time"
+
+		if [ "$verbose" -ge 1 ]; then
+			print_status "$reproducible" "$package" configure "---" \
+			  "$configure_status" "$configure_time" "" "$configure_log_length"
+		fi
+		print_status "$reproducible_report" "$package" configure "---" \
+		  "$configure_status" "$configure_time" "" "$configure_log_length" \
+		  >> "$summary_1_file"
+		if [ "$configure_status" -ne 0 ]; then
+			add_log "$tmp_configure_log_file" "$configure_log_length" \
+			  "Log: $package configure"
+		fi
+	else
+		if [ "$verbose" -ge 1 ]; then
+			print_status "$reproducible" "$package" "configure" "$target" \
+			  "D" "" "" ""
+		fi
+		print_status "$reproducible_report" "$package" "configure" "$target" \
+		  "D" "" "" "" >> "$summary_1_file"
+		#continue
 	fi
 
 	############################################################
@@ -394,11 +466,11 @@ for package in "${packages[@]}"; do
 
 		if [ ! -f "$build_status_file" ]; then
 			if [ "$verbose" -ge 1 ]; then
-				print_status "$reproducible" "$package" "build" "$target" "" \
-				  "" "" ""
+				print_status "$reproducible" "$package" "build" "$target" \
+				  "D" "" "" ""
 			fi
 			print_status "$reproducible_report" "$package" "build" "$target" \
-			  "" "" "" "" >> "$summary_1_file"
+			  "D" "" "" "" >> "$summary_1_file"
 			continue
 		fi
 

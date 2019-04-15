@@ -30,11 +30,18 @@ ari_ifinfo="$cmd_dir/ari_ifinfo"
 
 usage()
 {
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage:
+	Usage
+	=====
+
 	$0 [options]
 
-	Options:
+	Options
+	=======
+
 	-D \$debug_level
 	    Set the debug level to \$debug_level.
 	EOF

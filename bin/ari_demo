@@ -36,11 +36,18 @@ ari_process="$cmd_dir/ari_process"
 
 usage()
 {
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	Usage:
+	Usage
+	=====
+
 	$0 [options]
 
-	Options:
+	Options
+	=======
+
 	-p pdf_viewer
 	    Set the PDF viewer program to pdf_viewer.
 	-d output_directory

@@ -28,12 +28,18 @@
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	Usage:
+	Usage
+	=====
+
 	$0 [options] program [program_option...]
 
-	Options:
+	Options
+	=======
+
 	-s \$signal
 	    Set the signal to be sent to the process to \$signal.
 	    The default value for \$signal is SIGTERM.
@@ -49,7 +55,9 @@ usage()
 	-E
 	    Set the environment variable LIBC_FATAL_STDERR_ to 1.
 
-	Exit Status:
+	Exit Status
+	===========
+
 	124 program timed out
 	125 underlying timeout/env command failed
 	126 program is found but cannot be invoked

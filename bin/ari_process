@@ -33,10 +33,18 @@ warn()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] input_source...
-	options:
+	Usage
+	=====
+
+	$0 [options] input_source...
+
+	Options
+	=======
+
 	-D debug_level
 	    Set debug level to debug_level.
 	-O
@@ -134,6 +142,12 @@ for dir in "${dirs[@]}"; do
 	  panic "cannot compute mangled student name"
 
 	generate_args=()
+	if [ "$verbose" -ge 1 ]; then
+		generate_args+=(-v)
+	fi
+	if [ "$reproducible" -ne 0 ]; then
+		generate_args+=(-R)
+	fi
 	generate_args+=(-D "$debug_level")
 	generate_args+=(-d "$project_dir")
 	if [ "$skip_optional" -ne 0 ]; then
@@ -219,9 +233,9 @@ for dir in "${dirs[@]}"; do
 	if [ "$debug_level" -ge 1 ]; then
 		eecho "Reporting"
 	fi
-	#if [ "$verbose" -ge 1 ]; then
-	#	report_args+=(-v)
-	#fi
+	if [ 0 -ne 0 -a "$verbose" -ge 1 ]; then
+		report_args+=(-v)
+	fi
 	"$ari_report" "${report_args[@]}"
 	if [ $? -ne 0 ]; then
 		echo "report failed"

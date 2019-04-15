@@ -33,10 +33,18 @@ perror()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] [input...]
-	options:
+	Usage
+	=====
+
+	$0 [options] [input...]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-o org_name

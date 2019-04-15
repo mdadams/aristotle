@@ -28,9 +28,14 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 source_dir destination_dir
+	Usage
+	=====
+
+	$0 source_dir destination_dir
 	EOF
 	exit 2
 }

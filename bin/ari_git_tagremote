@@ -33,10 +33,18 @@ perror()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] repo_url
-	options:
+	Usage
+	=====
+
+	$0 [options] repo_url
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-b branch

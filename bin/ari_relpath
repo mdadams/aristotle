@@ -8,11 +8,18 @@ panic()
 
 usage()
 {
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage:
+	Usage
+	=====
+
 	$0 [options] pathnames...
 
-	options:
+	Options
+	=======
+
 	-r \$relative_to
 	    Specify the relative-to path.
 	    This value defaults to the current directory.

@@ -31,17 +31,28 @@ panic()
 
 usage()
 {
-	echo "bad usage: $@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
+	Usage
+	=====
+
 	$0 [options] -v \$version -d \$install_dir
 
-	options:
+	Options
+	=======
+
 	-d \$install_dir
 	    Set the installation directory to \$install_dir.
 	-v \$version
 	    Set the version to install to \$version.
 
-	examples:
+	Examples
+	========
+
+	$0 -v v0.3.1 -d /opt/bwrap
+	$0 -v master -d /opt/bwrap
 	EOF
 	exit 2
 }

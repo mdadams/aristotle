@@ -45,9 +45,18 @@ get_test_name()
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options] tag
+	Usage
+	=====
+
+	$0 [options] tag
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-d field_sep

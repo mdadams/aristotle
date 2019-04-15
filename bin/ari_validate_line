@@ -26,6 +26,27 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities"
 
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	cat <<- EOF
+	Usage
+	=====
+
+	$0 [options] [args]
+
+	Options
+	=======
+
+	-D \$debug_level
+	-e \$regexp
+	--
+	EOF
+	exit 2
+}
+
 saved_command_line=("$0" "$@")
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"

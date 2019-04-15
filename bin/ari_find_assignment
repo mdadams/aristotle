@@ -62,12 +62,18 @@ fi
 
 usage()
 {
-	echo "$@"
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	Usage:
+	Usage
+	=====
+
 	$0 [options]
 
-	Options:
+	Options
+	=======
+
 	-a
 	    Specify assignment.
 	-v

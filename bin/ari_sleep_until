@@ -28,10 +28,18 @@ source "$cmd_dir/utilities" || exit 1
 
 usage()
 {
-	echo "usage: $0 ..."
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
 	cat <<- EOF
-	usage: $0 [options]
-	options:
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
 	-D debug_level
 	    Set the debug level to debug_level.
 	-t wakeup_time

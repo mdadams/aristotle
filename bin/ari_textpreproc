@@ -62,6 +62,27 @@ user=$(whoami) || panic "cannot get user name"
 host=$(hostname) || panic "cannot get host name"
 tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_textpreproc-$user@$host-$$-XXXXXXXX"
 
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	cat <<- EOF
+	Usage
+	=====
+
+	$0 [options]
+
+	Options
+	=======
+
+	-D \$debug_level
+	-c \$max_columns
+	-v
+	EOF
+	exit 2
+}
+
 max_columns=80
 
 while getopts Rc: option; do
