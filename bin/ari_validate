@@ -76,8 +76,8 @@ ari_student_info="$cmd_dir/ari_student_info"
 ari_validate_line="$cmd_dir/ari_validate_line"
 ari_find_assignment="$cmd_dir/ari_find_assignment"
 
-# Note: Maybe it would be better to keep this disabled.
-enable_term=0
+# Note: Maybe it would be better to keep this disabled?
+enable_term=1
 
 project_dir=$("$ari_locate" -q) || project_dir=
 packages=()
