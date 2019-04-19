@@ -72,6 +72,7 @@ host_name=$(hostname) || panic "cannot determine hostname"
 tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_git_tagremote-${user_name}@${host_name}-$$-XXXXXXXX"
 
 ari_mktemp="$cmd_dir/ari_mktemp"
+ari_git_isempty="$cmd_dir/ari_git_isempty"
 
 cleanup=1
 branch=
@@ -201,14 +202,9 @@ while true; do
 	fi
 
 	# Check for an empty repository.
-	GIT_DIR="$git_dir/.git" \
-	  conditionally_discard_output "$discard_stdout_stderr" \
-	  git rev-list -n 1 --all
-	if [ $? -ne 0 ]; then
-		empty_repo=1
-	else
-		empty_repo=0
-	fi
+	empty_repo="$(GIT_DIR="$git_dir/.git" \
+	  conditionally_discard_output "$discard_stderr" "$ari_git_isempty")" || \
+	  panic "check for empty repository failed"
 	if [ "$empty_repo" -ne 0 ]; then
 		command_status="$EXIT_STATUS_EMPTY_REPO"
 		perror "empty repository"

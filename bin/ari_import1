@@ -62,6 +62,7 @@ ari_get_assignment="$cmd_dir/ari_get_assignment"
 ari_ifinfo="$cmd_dir/ari_ifinfo"
 ari_validate_line="$cmd_dir/ari_validate_line"
 ari_find_assignment="$cmd_dir/ari_find_assignment"
+ari_git_isempty="$cmd_dir/ari_git_isempty"
 
 project_dir=
 default_project=
@@ -172,12 +173,8 @@ git)
 	  panic "cannot clone repository $in_source"
 
 	# Check for an empty repository.
-	test -n "$(GIT_DIR="$dist_dir/.git" git rev-list -n 1 --all)"
-	if [ $? -ne 0 ]; then
-		empty_repo=1
-	else
-		empty_repo=0
-	fi
+	empty_repo="$(GIT_DIR="$dist_dir/.git" "$ari_git_isempty")" || \
+	  panic "check for empty repository failed"
 	if [ "$empty_repo" -ne 0 ]; then
 		panic "cannot import empty repository $in_source"
 	fi

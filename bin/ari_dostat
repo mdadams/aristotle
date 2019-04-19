@@ -219,12 +219,8 @@ while true; do
 		  panic "cannot clone repository $repo_url"
 
 		# Check for an empty repository.
-		test -n "$(GIT_DIR="$repo_dir/.git" git rev-list -n 1 --all)"
-		if [ $? -ne 0 ]; then
-			empty_repo=1
-		else
-			empty_repo=0
-		fi
+		empty_repo="$(GIT_DIR="$repo_dir/.git" ari_git_isempty)" || \
+		  panic "check for empty repository failed"
 		if [ "$empty_repo" -ne 0 ]; then
 			eecho "warning: skipping empty repository"
 			skip=1

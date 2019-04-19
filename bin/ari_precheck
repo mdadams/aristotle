@@ -238,6 +238,9 @@ for in_source in "${in_sources[@]}"; do
 	fi
 
 	generate_opts=()
+	if [ "$verbose" -ge 1 ]; then
+		generate_opts+=(-v)
+	fi
 	generate_opts+=(-D "$debug_level")
 	generate_opts+=(-d "$project_dir")
 	if [ "$skip_optional" -ne 0 ]; then
