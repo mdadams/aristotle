@@ -59,6 +59,9 @@ usage()
 	    Check the signature.
 	-v
 	    Increase the verbosity level.
+	-w \$delay
+	    Wait for \$delay seconds between import operations.
+	    This is useful for throttling GitHub operations.
 	EOF
 	exit 2
 }
@@ -74,8 +77,9 @@ in_subtype=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
 verify_sig=0
+delay=
 
-while getopts vd:p:D:i:a:t:s:c option; do
+while getopts vd:p:D:i:a:t:s:cw: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -95,6 +99,8 @@ while getopts vd:p:D:i:a:t:s:c option; do
 		verify_sig=1;;
 	v)
 		verbose=$((verbose + 1));;
+	w)
+		delay="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -124,6 +130,10 @@ fi
 failed_sources=()
 
 for in_source in "${in_sources[@]}"; do
+
+	if [ -n "$delay" ]; then
+		sleep "$delay" || panic "sleep failed"
+	fi
 
 	if [ -z "$in_type" ]; then
 		case "$in_source" in
