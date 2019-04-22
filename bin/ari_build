@@ -226,14 +226,20 @@ for package in "${packages[@]}"; do
 	auto)
 		if [ -f "$source_dir/CMakeLists.txt" ]; then
 			build_tool=cmake
-		else
+		elif [ -f "$source_dir/Makefile" -o -f "$source_dir/makefile" ]; then
 			build_tool=make
+		else
+			build_tool=none
 		fi
 		;;
 	*)
 		build_tool="$build_type"
 		;;
 	esac
+
+	if [ "$build_tool" = "none" ]; then
+		continue
+	fi
 
 	configure_sandbox=$( \
 	  "$ari_info" -a "$project" "package-$package/configure_sandbox") || \
@@ -440,7 +446,7 @@ for package in "${packages[@]}"; do
 			;;
 
 		*)
-			panic "invalid build tool"
+			panic "invalid build tool $build_tool"
 			;;
 
 		esac
@@ -657,7 +663,7 @@ for package in "${packages[@]}"; do
 			;;
 
 		*)
-			panic "invalid build tool"
+			panic "invalid build tool $build_tool"
 			;;
 
 		esac

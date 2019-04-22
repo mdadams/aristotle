@@ -152,7 +152,7 @@ The following are properties of a package within an assignment:
     is used to generate the package (i.e., the package will be identical
     to the original assignment submission).
 
-    build_tool (valid values: auto, cmake, make, user)
+    build_tool (valid values: auto, cmake, make, user, none)
     The tool to be used to build the code in the assignment submission.
     Valid values:
         auto
@@ -164,6 +164,9 @@ The following are properties of a package within an assignment:
             use Make
         user
             use a user-specified tool
+        none
+            nothing needs to be done to build the code
+            (e.g., an interpreted language that requires no compilation)
     Default value: auto
 
     configure

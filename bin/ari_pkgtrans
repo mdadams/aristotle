@@ -148,7 +148,28 @@ while [ $# -gt 0 ]; do
 			eecho "cd $cur_dir && $ari_lndir $dir"
 		fi
 		if [ "$show_only" -eq 0 ]; then
-			(cd "$cur_dir" && "$ari_lndir" "$dir") || panic
+			(cd "$cur_dir" && "$ari_lndir" "$dir") || \
+			  panic "lndir failed"
+		fi
+		;;
+
+	exists)
+		if [ $# -lt 1 ]; then
+			panic "no path specified"
+		fi
+		if [ -z "$cur_dir" ]; then
+			panic "current directory not set"
+		fi
+		path="$1"
+		shift 1
+		target_path="$cur_dir/$path"
+		if [ "$verbose" -ge 1 -o "$show_only" -ne 0 ]; then
+			echo "testing existence of $target_path"
+		fi
+		if [ "$show_only" -eq 0 ]; then
+			if [ ! -e "$target_path" ]; then
+				panic "missing file/directory $path"
+			fi
 		fi
 		;;
 
@@ -167,7 +188,8 @@ while [ $# -gt 0 ]; do
 			eecho "touching $target_path"
 		fi
 		if [ "$show_only" -eq 0 ]; then
-			touch "$target_path" || panic "cannot touch file"
+			touch "$target_path" || \
+			  panic "cannot touch file $path"
 		fi
 		;;
 
