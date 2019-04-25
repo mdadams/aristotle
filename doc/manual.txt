@@ -509,3 +509,10 @@ ari_gc_makerelease
 ari_gc_makerepo
 ari_gc_tagrepo
 
+Common Problems
+===============
+
+If authentication is failing in the ari_hub (or hub) program, check
+if an invalid (e.g., deleted) access token is specified in the hub
+configuration file (i.e., $HOME/.config/hub).
+

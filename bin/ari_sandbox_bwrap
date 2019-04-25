@@ -270,6 +270,18 @@ options+=(--ro-bind /etc /etc)
 options+=(--dir /var)
 options+=(--symlink ../tmp var/tmp)
 
+# Allow for X/Wayland applications to be run.
+if [ 1 -ne 0 ]; then
+	target="/run/user/$UID"
+	if [ -e "$target" ]; then
+		options+=(--bind "$target" "$target")
+	fi
+	target="$HOME/.Xauthority"
+	if [ -e "$target" ]; then
+		options+=(--bind "$target" "$target")
+	fi
+fi
+
 options+=(--setenv PS1 "sandbox$ ")
 
 i=0

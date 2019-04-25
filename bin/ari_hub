@@ -36,6 +36,10 @@ gc_username_file="$user_config_dir/gc_username"
 gc_password_file="$user_config_dir/gc_password"
 gc_token_file="$user_config_dir/gc_token"
 
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
 if [ ! -f "$gc_login_file" ]; then
 	panic "not logged in"
 fi
