@@ -407,95 +407,128 @@ for package in "${packages[@]}"; do
 	# configure results
 	############################################################
 
-	if [ -f "$configure_status_file" ]; then
-		"$ari_textpreproc" \
-		  < "$configure_log_file" > "$tmp_configure_log_file" || \
-		  panic "cannot process log file"
-		configure_status=$(cat "$configure_status_file") || \
-		  panic "cannot get configure status"
-		configure_log_length=$(count_lines "$tmp_configure_log_file") || \
-		  panic "cannot get log length"
-		configure_time=$(cat "$configure_time_file") || \
-		  panic "cannot get time"
+	build_type=$("$ari_info" \
+	  -a "$project" package-"$package"/build_tool) || \
+	  panic "cannot get build type"
+	case "$build_type" in
+	auto)
+		# Note: This algorithm must match the one in ari_build.
+		if [ -f "$source_dir/CMakeLists.txt" ]; then
+			build_tool=cmake
+		elif [ -f "$source_dir/Makefile" -o -f "$source_dir/makefile" ]; then
+			build_tool=make
+		else
+			build_tool=none
+		fi
+		;;
+	*)
+		build_tool="$build_type"
+		;;
+	esac
+	case "$build_tool" in
+	none)
+		has_build=0;;
+	make|cmake|user)
+		has_build=1;;
+	*)
+		panic "invalid build tool";;
+	esac
 
-		if [ "$verbose" -ge 1 ]; then
-			print_status "$reproducible" "$package" configure "---" \
-			  "$configure_status" "$configure_time" "" "$configure_log_length"
+	if [ "$has_build" -ne 0 ]; then
+		if [ -f "$configure_status_file" ]; then
+			"$ari_textpreproc" \
+			  < "$configure_log_file" > "$tmp_configure_log_file" || \
+			  panic "cannot process log file"
+			configure_status=$(cat "$configure_status_file") || \
+			  panic "cannot get configure status"
+			configure_log_length=$(count_lines "$tmp_configure_log_file") || \
+			  panic "cannot get log length"
+			configure_time=$(cat "$configure_time_file") || \
+			  panic "cannot get time"
+
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" configure "---" \
+				  "$configure_status" "$configure_time" "" \
+				  "$configure_log_length"
+			fi
+			print_status "$reproducible_report" "$package" configure "---" \
+			  "$configure_status" "$configure_time" "" \
+			  "$configure_log_length" >> "$summary_1_file"
+			if [ "$configure_status" -ne 0 ]; then
+				add_log "$tmp_configure_log_file" "$configure_log_length" \
+				  "Log: $package configure"
+			fi
+		else
+			if [ "$verbose" -ge 1 ]; then
+				print_status "$reproducible" "$package" "configure" \
+				  "$target" "D" "" "" ""
+			fi
+			print_status "$reproducible_report" "$package" "configure" \
+			  "$target" "D" "" "" "" >> "$summary_1_file"
+			#continue
 		fi
-		print_status "$reproducible_report" "$package" configure "---" \
-		  "$configure_status" "$configure_time" "" "$configure_log_length" \
-		  >> "$summary_1_file"
-		if [ "$configure_status" -ne 0 ]; then
-			add_log "$tmp_configure_log_file" "$configure_log_length" \
-			  "Log: $package configure"
-		fi
-	else
-		if [ "$verbose" -ge 1 ]; then
-			print_status "$reproducible" "$package" "configure" "$target" \
-			  "D" "" "" ""
-		fi
-		print_status "$reproducible_report" "$package" "configure" "$target" \
-		  "D" "" "" "" >> "$summary_1_file"
-		#continue
 	fi
 
 	############################################################
 	# build results
 	############################################################
 
-	for target in "${build_targets[@]}"; do
+	if [ "$has_build" -ne 0 ]; then
+		for target in "${build_targets[@]}"; do
 
-		build_dir="$package_dir/build-$target"
-		build_log_file="$build_dir/log"
-		build_status_file="$build_dir/status"
-		build_time_file="$build_dir/time"
+			build_dir="$package_dir/build-$target"
+			build_log_file="$build_dir/log"
+			build_status_file="$build_dir/status"
+			build_time_file="$build_dir/time"
 
-		tmp_build_log_file=$(get_tmp_file build) || \
-		  panic "cannot get temporary file"
-		tmp_file_no=$((tmp_file_no + 1))
+			tmp_build_log_file=$(get_tmp_file build) || \
+			  panic "cannot get temporary file"
+			tmp_file_no=$((tmp_file_no + 1))
 
-		target_name=$("$ari_info" \
-		  -a "$project" package-"$package"/build-"$target"/name) || \
-		  panic "cannot get target name"
-		target_name_buffer=$(echo "$target_name" | wrap_indent_text 4 ) || \
-		  panic "cannot format target name"
-		cat >> "$summary_2_file" <<- EOF
-		Build target: $target
-		$target_name_buffer
-		EOF
+			target_name=$("$ari_info" \
+			  -a "$project" package-"$package"/build-"$target"/name) || \
+			  panic "cannot get target name"
+			target_name_buffer=$(echo "$target_name" | \
+			  wrap_indent_text 4 ) || \
+			  panic "cannot format target name"
+			cat >> "$summary_2_file" <<- EOF
+			Build target: $target
+			$target_name_buffer
+			EOF
 
-		if [ ! -f "$build_status_file" ]; then
+			if [ ! -f "$build_status_file" ]; then
+				if [ "$verbose" -ge 1 ]; then
+					print_status "$reproducible" "$package" "build" \
+					  "$target" "D" "" "" ""
+				fi
+				print_status "$reproducible_report" "$package" "build" \
+				  "$target" "D" "" "" "" >> "$summary_1_file"
+				continue
+			fi
+
+			"$ari_textpreproc" < "$build_log_file" > "$tmp_build_log_file" || \
+			  panic "cannot process log file"
+			build_status=$(cat "$build_status_file") || \
+			  panic "cannot get build status"
+			build_log_length=$(count_lines "$tmp_build_log_file") || \
+			  panic "cannot get build log length"
+			build_time=$(cat "$build_time_file") || \
+			  panic "cannot get build time"
 			if [ "$verbose" -ge 1 ]; then
 				print_status "$reproducible" "$package" "build" "$target" \
-				  "D" "" "" ""
+				  "$build_status" "$build_time" "" "$build_log_length"
 			fi
 			print_status "$reproducible_report" "$package" "build" "$target" \
-			  "D" "" "" "" >> "$summary_1_file"
-			continue
-		fi
+			  "$build_status" "$build_time" "" "$build_log_length" \
+			  >> "$summary_1_file"
 
-		"$ari_textpreproc" < "$build_log_file" > "$tmp_build_log_file" || \
-		  panic "cannot process log file"
-		build_status=$(cat "$build_status_file") || \
-		  panic "cannot get build status"
-		build_log_length=$(count_lines "$tmp_build_log_file") || \
-		  panic "cannot get build log length"
-		build_time=$(cat "$build_time_file") || \
-		  panic "cannot get build time"
-		if [ "$verbose" -ge 1 ]; then
-			print_status "$reproducible" "$package" "build" "$target" \
-			  "$build_status" "$build_time" "" "$build_log_length"
-		fi
-		print_status "$reproducible_report" "$package" "build" "$target" \
-		  "$build_status" "$build_time" "" "$build_log_length" \
-		  >> "$summary_1_file"
+			if [ "$build_status" -ne 0 ]; then
+				add_log "$tmp_build_log_file" "$build_log_length" \
+				  "Log: $package build $target"
+			fi
 
-		if [ "$build_status" -ne 0 ]; then
-			add_log "$tmp_build_log_file" "$build_log_length" \
-			  "Log: $package build $target"
-		fi
-
-	done
+		done
+	fi
 
 	############################################################
 	# test results
