@@ -403,36 +403,49 @@ for package in "${packages[@]}"; do
 		  "Log: $package generate"
 	fi
 
+	if [ "$generate_status" -eq 0 ]; then
+		has_build=1
+		has_test=1
+	else
+		has_build=0
+		has_test=0
+	fi
+
 	############################################################
 	# configure results
 	############################################################
 
-	build_type=$("$ari_info" \
-	  -a "$project" package-"$package"/build_tool) || \
-	  panic "cannot get build type"
-	case "$build_type" in
-	auto)
-		# Note: This algorithm must match the one in ari_build.
-		if [ -f "$source_dir/CMakeLists.txt" ]; then
-			build_tool=cmake
-		elif [ -f "$source_dir/Makefile" -o -f "$source_dir/makefile" ]; then
-			build_tool=make
-		else
-			build_tool=none
-		fi
-		;;
-	*)
-		build_tool="$build_type"
-		;;
-	esac
-	case "$build_tool" in
-	none)
-		has_build=0;;
-	make|cmake|user)
-		has_build=1;;
-	*)
-		panic "invalid build tool";;
-	esac
+	# Note: If generation fails, automatic build tool detection cannot
+	# work reliably (since it is uncertain what sources files should be
+	# present).
+	if [ "$has_build" -ne 0 ]; then
+		build_type=$("$ari_info" \
+		  -a "$project" package-"$package"/build_tool) || \
+		  panic "cannot get build type"
+		case "$build_type" in
+		auto)
+			# Note: This algorithm must match the one in ari_build.
+			if [ -f "$source_dir/CMakeLists.txt" ]; then
+				build_tool=cmake
+			elif [ -f "$source_dir/Makefile" -o -f "$source_dir/makefile" ]; then
+				build_tool=make
+			else
+				build_tool=none
+			fi
+			;;
+		*)
+			build_tool="$build_type"
+			;;
+		esac
+		case "$build_tool" in
+		none)
+			has_build=0;;
+		make|cmake|user)
+			has_build=1;;
+		*)
+			panic "invalid build tool";;
+		esac
+	fi
 
 	if [ "$has_build" -ne 0 ]; then
 		if [ -f "$configure_status_file" ]; then
@@ -534,114 +547,118 @@ for package in "${packages[@]}"; do
 	# test results
 	############################################################
 
-	for target in "${test_targets[@]}"; do
+	if [ "$has_test" -ne 0 ]; then
+		for target in "${test_targets[@]}"; do
 
-		test_dir="$package_dir/test-$target"
-		test_log_file="$test_dir/log"
-		test_status_file="$test_dir/status"
-		test_time_file="$test_dir/time"
-		test_result_file="$test_dir/result"
+			test_dir="$package_dir/test-$target"
+			test_log_file="$test_dir/log"
+			test_status_file="$test_dir/status"
+			test_time_file="$test_dir/time"
+			test_result_file="$test_dir/result"
 
-		tmp_test_log_file=$(get_tmp_file test) || \
-		  panic "cannot get temporary file"
-		tmp_file_no=$((tmp_file_no + 1))
+			tmp_test_log_file=$(get_tmp_file test) || \
+			  panic "cannot get temporary file"
+			tmp_file_no=$((tmp_file_no + 1))
 
-		optional=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/optional)) || \
-		  panic "cannot get test targets"
-		if [ "$skip_optional" -ne 0 -a "$optional" -ne 0 ]; then
-			continue
-		fi
+			optional=($("$ari_info" \
+			  -a "$project" package-"$package"/test-$target/optional)) || \
+			  panic "cannot get test targets"
+			if [ "$skip_optional" -ne 0 -a "$optional" -ne 0 ]; then
+				continue
+			fi
 
-		dependencies=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/depends_on)) || \
-		  panic "cannot get dependencies"
-		missing_dependency=0
-		for dependency in "${dependencies[@]}"; do
-			status_file="$package_dir/$dependency/status"
-			if [ -f "$status_file" ]; then
-				buffer=$(cat "$status_file") || \
-				  panic "cannot get contents of status file"
-				if [ "$buffer" -ne 0 ]; then
+			dependencies=($("$ari_info" \
+			  -a "$project" package-"$package"/test-$target/depends_on)) || \
+			  panic "cannot get dependencies"
+			missing_dependency=0
+			for dependency in "${dependencies[@]}"; do
+				status_file="$package_dir/$dependency/status"
+				if [ -f "$status_file" ]; then
+					buffer=$(cat "$status_file") || \
+					  panic "cannot get contents of status file"
+					if [ "$buffer" -ne 0 ]; then
+						missing_dependency=1
+					fi
+				else
 					missing_dependency=1
 				fi
+			done
+			if [ "$missing_dependency" -ne 0 ]; then
+				if [ "$verbose" -ge 1 ]; then
+					print_status "$reproducible" "$package" "test" "$target" \
+					  "D" "" "" ""
+				fi
+				print_status "$reproducible_report" "$package" "test" \
+				  "$target" "D" "" "" "" >> "$summary_1_file"
+				continue
+			fi
+
+			target_name=$("$ari_info" \
+			  -a "$project" package-"$package"/test-"$target"/name) || \
+			  panic "cannot get target name"
+			target_name_buffer=$(echo "$target_name" | \
+			  wrap_indent_text 4) || \
+			  panic "cannot format target name"
+			cat >> "$summary_2_file" <<- EOF
+			Test target: $target
+			$target_name_buffer
+			EOF
+
+			manual=($("$ari_info" \
+			  -a "$project" package-"$package"/test-$target/manual)) || \
+			  panic "cannot get manual property"
+			if [ "$manual" -ne 0 ]; then
+				if [ "$verbose" -ge 1 ]; then
+					print_status "$reproducible" "$package" "test" "$target" \
+					  "M" "" "" ""
+				fi
+				print_status "$reproducible_report" "$package" "test" \
+				  "$target" "M" "" "" "" >> "$summary_1_file"
+				continue
+			fi
+
+			if [ ! -f "$test_status_file" ]; then
+				if [ "$verbose" -ge 1 ]; then
+					print_status "$reproducible" "$package" "test" \
+					  "$target" "" "" "" ""
+				fi
+				print_status "$reproducible_report" "$package" "test" \
+				  "$target" "" "" "" "" >> "$summary_1_file"
+				continue
+			fi
+
+			"$ari_textpreproc" < "$test_log_file" > "$tmp_test_log_file" || \
+			  panic "cannot process log file"
+			test_status=$(cat "$test_status_file") || \
+			  panic "cannot get test status"
+			test_log_length=$(count_lines "$tmp_test_log_file") || \
+			  panic "cannot get test log length"
+			test_time=$(cat "$test_time_file") || \
+			  panic "cannot get test time"
+			if [ -f "$test_result_file" ]; then
+				test_result=$(cat "$test_result_file") || \
+				  panic "cannot get test result"
 			else
-				missing_dependency=1
+				#test_result="?/?"
+				test_result=""
 			fi
+			if [ "$verbose" -ge 1 ]; then
+				print_status \
+				  "$reproducible" "$package" "test" "$target" \
+				  "$test_status" "$test_time" "$test_result" "$test_log_length"
+			fi
+			print_status \
+			  "$reproducible_report" "$package" "test" "$target" \
+			  "$test_status" "$test_time" "$test_result" "$test_log_length" \
+			  >> "$summary_1_file"
+
+			if [ "$test_status" -ne 0 ]; then
+				add_log "$tmp_test_log_file" "$test_log_length" \
+				  "Log: $package test $target"
+			fi
+
 		done
-		if [ "$missing_dependency" -ne 0 ]; then
-			if [ "$verbose" -ge 1 ]; then
-				print_status "$reproducible" "$package" "test" "$target" \
-				  "D" "" "" ""
-			fi
-			print_status "$reproducible_report" "$package" "test" "$target" \
-			  "D" "" "" "" >> "$summary_1_file"
-			continue
-		fi
-
-		target_name=$("$ari_info" \
-		  -a "$project" package-"$package"/test-"$target"/name) || \
-		  panic "cannot get target name"
-		target_name_buffer=$(echo "$target_name" | wrap_indent_text 4 ) || \
-		  panic "cannot format target name"
-		cat >> "$summary_2_file" <<- EOF
-		Test target: $target
-		$target_name_buffer
-		EOF
-
-		manual=($("$ari_info" \
-		  -a "$project" package-"$package"/test-$target/manual)) || \
-		  panic "cannot get manual property"
-		if [ "$manual" -ne 0 ]; then
-			if [ "$verbose" -ge 1 ]; then
-				print_status "$reproducible" "$package" "test" "$target" \
-				  "M" "" "" ""
-			fi
-			print_status "$reproducible_report" "$package" "test" "$target" \
-			  "M" "" "" "" >> "$summary_1_file"
-			continue
-		fi
-
-		if [ ! -f "$test_status_file" ]; then
-			if [ "$verbose" -ge 1 ]; then
-				print_status "$reproducible" "$package" "test" "$target" "" \
-				  "" "" ""
-			fi
-			print_status "$reproducible_report" "$package" "test" "$target" \
-			  "" "" "" "" >> "$summary_1_file"
-			continue
-		fi
-
-		"$ari_textpreproc" < "$test_log_file" > "$tmp_test_log_file" || \
-		  panic "cannot process log file"
-		test_status=$(cat "$test_status_file") || \
-		  panic "cannot get test status"
-		test_log_length=$(count_lines "$tmp_test_log_file") || \
-		  panic "cannot get test log length"
-		test_time=$(cat "$test_time_file") || \
-		  panic "cannot get test time"
-		if [ -f "$test_result_file" ]; then
-			test_result=$(cat "$test_result_file") || \
-			  panic "cannot get test result"
-		else
-			#test_result="?/?"
-			test_result=""
-		fi
-		if [ "$verbose" -ge 1 ]; then
-			print_status "$reproducible" "$package" "test" "$target" \
-			  "$test_status" "$test_time" "$test_result" "$test_log_length"
-		fi
-		print_status \
-		  "$reproducible_report" "$package" "test" "$target" "$test_status" \
-		  "$test_time" "$test_result" "$test_log_length" \
-		  >> "$summary_1_file"
-
-		if [ "$test_status" -ne 0 ]; then
-			add_log "$tmp_test_log_file" "$test_log_length" \
-			  "Log: $package test $target"
-		fi
-
-	done
+	fi
 
 	echo >> "$summary_2_file"
 

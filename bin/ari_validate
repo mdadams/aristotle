@@ -198,7 +198,8 @@ if [ "$num_files" -gt 0 ]; then
 	num_errors=$((num_errors + 1))
 fi
 
-all_files=($(chdir "$dist_dir" && find . -mindepth 1 | sed -e 's/^\.\///'))
+all_files=($(chdir "$dist_dir" && \
+  find . -mindepth 1 | sed -e 's/^\.\///' | sort))
 for file in "${all_files[@]}"; do
 	target="$dist_dir/$file"
 	valid=unknown

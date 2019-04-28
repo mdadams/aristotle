@@ -254,7 +254,10 @@ bwrap)
 		helper_args+=(-A "$abs_package_dir/source")
 		helper_args+=(-a "$abs_package_dir/derived")
 		helper_args+=(-a "$abs_package_dir/install")
-		helper_args+=(-C "$abs_cur_dir")
+		#helper_args+=(-C "$abs_cur_dir")
+		# Note: The directory specified for the current directory
+		# must exist inside the sandbox.
+		helper_args+=(-C "$abs_package_dir")
 	fi
 
 	if [ "$debug_level" -ge 1 ]; then
