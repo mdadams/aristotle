@@ -60,13 +60,13 @@ usage()
 	    Set the Bubblewrap program path to \$bwrap_path.
 	-D debug_level
 	    Set the debug level to debug_level.
+	-C \$cur_dir
+	    Set the current working directory for the sandbox.
 	EOF
 	exit 2
 }
 
 abs_cmd_dir=$(readlink -f "$cmd_dir") || panic
-cur_dir=$(pwd) || panic "cannot get current directory"
-abs_cur_dir=$(readlink -f "$cur_dir") || panic
 
 ari_root_dir="$abs_cmd_dir/.."
 ari_config_file="$ari_root_dir/etc/config"
@@ -84,8 +84,9 @@ sandbox_type=
 package=
 test=
 project_dir=
+cur_dir=
 
-while getopts D:d:p:m:B:ut:k: option; do
+while getopts D:d:p:m:B:ut:k:C: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -101,6 +102,8 @@ while getopts D:d:p:m:B:ut:k: option; do
 		sandbox_mode="$OPTARG";;
 	B)
 		bwrap_program="$OPTARG";;
+	C)
+		cur_dir="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -177,10 +180,28 @@ if [ "$sandbox_type" != special ]; then
 	abs_project_dir=$(ari_locate -d "$abs_project_dir") || panic
 	if [ -n "$package" ]; then
 		abs_package_dir="$abs_project_dir/package-$package"
+		abs_derived_dir="$abs_package_dir/derived"
 	fi
 
 fi
 
+if [ -z "$cur_dir" ]; then
+	case "$sandbox_type" in
+	configure|build)
+		cur_dir="$abs_derived_dir"
+		;;
+	test)
+		cur_dir="$abs_package_dir"
+		;;
+	special)
+		# No default.
+		;;
+	esac
+fi
+if [ -n "$cur_dir" ]; then
+	abs_cur_dir=$(readlink -f "$cur_dir") || \
+	  panic "cannot get real path"
+fi
 
 if [ -n "${ARI_SANDBOXED+x}" ]; then
 	panic "nesting of sandboxes is not supported"
@@ -254,10 +275,11 @@ bwrap)
 		helper_args+=(-A "$abs_package_dir/source")
 		helper_args+=(-a "$abs_package_dir/derived")
 		helper_args+=(-a "$abs_package_dir/install")
-		#helper_args+=(-C "$abs_cur_dir")
-		# Note: The directory specified for the current directory
-		# must exist inside the sandbox.
-		helper_args+=(-C "$abs_package_dir")
+	fi
+	# Note: The directory specified for the current directory
+	# must exist inside the sandbox.
+	if [ -z "$abs_cur_dir" ]; then
+		helper_args+=(-C "$abs_cur_dir")
 	fi
 
 	if [ "$debug_level" -ge 1 ]; then
