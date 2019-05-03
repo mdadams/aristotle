@@ -66,6 +66,8 @@ usage()
 	    Increase the verbosity level of output.
 	-D \$debug_level
 	    Set the debug level to \$debug_level.
+	-R
+	    Enable reproducible mode.
 
 	Workspace Organization
 	======================
@@ -96,8 +98,9 @@ debug_level=${ARI_DEBUG_LEVEL:-0}
 report_file=
 in_type=
 out_dir=
+reproducible=0
 
-while getopts CD:b:vr:t:d: option; do
+while getopts CD:b:vr:t:d:R option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -111,6 +114,8 @@ while getopts CD:b:vr:t:d: option; do
 		in_type="$OPTARG";;
 	d)
 		out_dir="$OPTARG";;
+	R)
+		reproducible=1;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -149,6 +154,9 @@ if [ -n "$in_type" ]; then
 fi
 if [ -n "$branch" ]; then
 	options+=(-s "$branch")
+fi
+if [ "$reproducible" -ne 0 ]; then
+	options+=(-R)
 fi
 if [ "$verbose" -ge 1 ]; then
 	echo "Running $ari_precheck ${options[@]} $input"

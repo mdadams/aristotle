@@ -246,6 +246,9 @@ for in_source in "${in_sources[@]}"; do
 	if [ "$skip_optional" -ne 0 ]; then
 		generate_opts+=(-O)
 	fi
+	if [ "$reproducible" -ne 0 ]; then
+		generate_opts+=(-R)
+	fi
 	"$ari_generate" "${generate_opts[@]}"
 	if [ $? -ne 0 ]; then
 		echo "generation failed"
@@ -260,7 +263,7 @@ for in_source in "${in_sources[@]}"; do
 		build_opts+=(-O)
 	fi
 	if [ "$reproducible" -ne 0 ]; then
-		report_args+=(-R)
+		build_opts+=(-R)
 	fi
 	if [ "$verbose" -ge 1 ]; then
 		build_opts+=(-v)
@@ -280,7 +283,7 @@ for in_source in "${in_sources[@]}"; do
 		test_opts+=(-O)
 	fi
 	if [ "$reproducible" -ne 0 ]; then
-		report_args+=(-R)
+		test_opts+=(-R)
 	fi
 	if [ "$verbose" -ge 1 ]; then
 		test_opts+=(-v)
@@ -300,7 +303,7 @@ for in_source in "${in_sources[@]}"; do
 		report_opts+=(-O)
 	fi
 	if [ "$reproducible" -ne 0 ]; then
-		report_args+=(-R)
+		report_opts+=(-R)
 	fi
 	#if [ "$verbose" -ge 1 ]; then
 	#	report_opts+=(-v)

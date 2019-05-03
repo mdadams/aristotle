@@ -276,7 +276,7 @@ if [ 1 -ne 0 ]; then
 	if [ -e "$target" ]; then
 		options+=(--bind "$target" "$target")
 	fi
-	target="$HOME/.Xauthority"
+	target="$XAUTHORITY"
 	if [ -e "$target" ]; then
 		options+=(--bind "$target" "$target")
 	fi
