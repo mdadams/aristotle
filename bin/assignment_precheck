@@ -46,7 +46,8 @@ usage()
 	=======
 
 	-r \$report_file
-	    Specify an output file for the \$report_file.
+	    Specify that the report (in PDF format) should be saved as the file
+	    \$report_file.
 	-b \$branch
 	    Set the branch (or commit) that is to be checked to \$branch.
 	    The default value is $default_branch.
