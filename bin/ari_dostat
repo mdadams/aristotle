@@ -111,8 +111,10 @@ package_regex=".*"
 work_dir=
 branch=master
 enable_issues=1
+reproducible=0
+verbose=0
 
-while getopts D:r:p:o:d:n option; do
+while getopts D:r:p:o:d:nRv option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -126,6 +128,10 @@ while getopts D:r:p:o:d:n option; do
 		organization="$OPTARG";;
 	n)
 		enable_issues=0;;
+	R)
+		reproducible=1;;
+	v)
+		verbose=$((verbose + 1));;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -230,8 +236,12 @@ while true; do
 
 			(cd "$repo_dir" && git checkout -q "$branch") || \
 			  panic "cannot checkout"
-			ari_import1 -v -t git_working_tree -i "$repo_dir" \
-			  -d "$workspace_dir"
+			ari_import1_options=()
+			if [ "$verbose" -ge 1 ]; then
+				ari_import1_options+=(-v)
+			fi
+			ari_import1 "${ari_import1_options[@]}" \
+			  -t git_working_tree -i "$repo_dir" -d "$workspace_dir"
 			status=$?
 			if [ "$status" -ne 0 ]; then
 				eecho "warning: skipping $repo_name due to import failure"
@@ -276,7 +286,14 @@ while true; do
 
 		if [ "$skip" -eq 0 ]; then
 
-			ari_process -v "$workspace_dir"
+			ari_process_options=()
+			if [ "$verbose" -ge 1 ]; then
+				ari_process_options+=(-v)
+			fi
+			if [ "$reproducible" -ne 0 ]; then
+				ari_process_options+=(-R)
+			fi
+			ari_process "${ari_process_options[@]}" "$workspace_dir"
 			status=$?
 
 			if [ -f "$validate_status_file" ]; then
@@ -311,6 +328,20 @@ while true; do
 				configure_status_file="$package_dir/configure/status"
 				generate_status_file="$package_dir/generate/status"
 
+				build_type=$("$ari_info" \
+				  -a "$project" package-"$package"/build_tool) || \
+				  panic "cannot get build type"
+				case "$build_type" in
+				none)
+					has_configure=0
+					has_build=0
+					;;
+				*)
+					has_configure=1
+					has_build=1
+					;;
+				esac
+
 				build_targets=($("$ari_info" \
 				  -a "$project" "package-$package/builds")) || \
 				  panic "cannot get build targets"
@@ -332,28 +363,36 @@ while true; do
 				  >> "$tmp_file" || \
 				  panic
 
-				if [ -f "$configure_status_file" ]; then
-					configure_status="$(cat "$configure_status_file")"
-				else
-					configure_status=
-				fi
-				print_status \
-				  "$package" "configure" "---" "$configure_status" \
-				  >> "$tmp_file" || \
-				  panic
+				if [ "$has_configure" -ne 0 ]; then
 
-				for target in "${build_targets[@]}"; do
-					build_status_file="$package_dir/build-$target/status"
-					if [ -f "$build_status_file" ]; then
-						build_status="$(cat "$build_status_file")"
+					if [ -f "$configure_status_file" ]; then
+						configure_status="$(cat "$configure_status_file")"
 					else
-						build_status=
+						configure_status=
 					fi
 					print_status \
-					  "$package" "build" "$target" "$build_status" \
+					  "$package" "configure" "---" "$configure_status" \
 					  >> "$tmp_file" || \
 					  panic
-				done
+
+				fi
+
+				if [ "$has_build" -ne 0 ]; then
+
+					for target in "${build_targets[@]}"; do
+						build_status_file="$package_dir/build-$target/status"
+						if [ -f "$build_status_file" ]; then
+							build_status="$(cat "$build_status_file")"
+						else
+							build_status=
+						fi
+						print_status \
+						  "$package" "build" "$target" "$build_status" \
+						  >> "$tmp_file" || \
+						  panic
+					done
+
+				fi
 
 				for target in "${test_targets[@]}"; do
 					# Do not provide information about optional test targets.
