@@ -113,6 +113,8 @@ branch=master
 enable_issues=1
 reproducible=0
 verbose=0
+inter_item_sleep=10
+inter_iter_sleep=60
 
 while getopts D:r:p:o:d:nRv option; do
 	case "$option" in
@@ -167,20 +169,24 @@ iter_no=0
 while true; do
 
 
-	cat <<- EOF
-	############################################################
-	Iteration: $iter_no
-	############################################################
-	EOF
+	if [ "$verbose" -ge 1 ]; then
+		cat <<- EOF
+		############################################################
+		Iteration: $iter_no
+		############################################################
+		EOF
+	fi
 
 	repo_names=($(ari_gc_lsrepo -o "$organization" | \
 	  grep -E '^'"$repo_regex"'$')) || \
 	  panic "cannot get list of repositories"
-	eecho "number of repositories: ${#repo_names[@]}"
-	eecho "repositories:"
-	for repo_name in "${repo_names[@]}"; do
-		eecho "    $repo_name"
-	done
+	if [ "$verbose" -ge 1 ]; then
+		eecho "number of repositories: ${#repo_names[@]}"
+		eecho "repositories:"
+		for repo_name in "${repo_names[@]}"; do
+			eecho "    $repo_name"
+		done
+	fi
 
 	for repo_name in "${repo_names[@]}"; do
 
@@ -190,6 +196,7 @@ while true; do
 		#repo_url="https://github.com/$organization/$repo_name.git"
 		item_dir="$work_dir/$repo_name"
 		old_commit_id_file="$item_dir/commit_id"
+		old_issue_file="$item_dir/issue"
 		old_workspace_dir="$item_dir/workspace"
 		workspace_dir="$item_dir/tmp_workspace"
 		repo_dir="$item_dir/repository"
@@ -200,11 +207,13 @@ while true; do
 		time="$(date +%Y-%m-%d-%H-%M-%S)" || panic "cannot get time"
 		issue_file="$issue_dir/issue-$time"
 
-		cat <<- EOF
-		############################################################
-		Processing $repo_name
-		############################################################
-		EOF
+		if [ "$verbose" -ge 1 ]; then
+			cat <<- EOF
+			############################################################
+			Processing $repo_name
+			############################################################
+			EOF
+		fi
 
 		for dir in "$item_dir" "$issue_dir"; do
 			if [ ! -d "$dir" ]; then
@@ -228,7 +237,9 @@ while true; do
 		empty_repo="$(GIT_DIR="$repo_dir/.git" ari_git_isempty)" || \
 		  panic "check for empty repository failed"
 		if [ "$empty_repo" -ne 0 ]; then
-			eecho "warning: skipping empty repository"
+			if [ "$verbose" -ge 1 ]; then
+				eecho "warning: skipping empty repository"
+			fi
 			skip=1
 		fi
 
@@ -241,10 +252,13 @@ while true; do
 				ari_import1_options+=(-v)
 			fi
 			ari_import1 "${ari_import1_options[@]}" \
-			  -t git_working_tree -i "$repo_dir" -d "$workspace_dir"
+			  -t git_working_tree -i "$repo_dir" -d "$workspace_dir" \
+			  2> /dev/null
 			status=$?
 			if [ "$status" -ne 0 ]; then
-				eecho "warning: skipping $repo_name due to import failure"
+				if [ "$verbose" -ge 1 ]; then
+					eecho "warning: skipping $repo_name due to import failure"
+				fi
 				skip=1
 			fi
 
@@ -272,7 +286,9 @@ while true; do
 				eecho "new commit ID: $commit_id"
 			fi
 			if [ -n "$old_commit_id" -a "$old_commit_id" = "$commit_id" ]; then
-				eecho "repository unchanged"
+				if [ "$verbose" -ge 1 ]; then
+					eecho "repository unchanged"
+				fi
 				skip=1
 			fi
 
@@ -285,6 +301,11 @@ while true; do
 		  panic "cannot append to temporary file"
 
 		if [ "$skip" -eq 0 ]; then
+
+			if [ -L "$old_issue_file" ]; then
+				rm -f "$old_issue_file" || \
+				  panic "cannot remove $old_issue_file"
+			fi
 
 			ari_process_options=()
 			if [ "$verbose" -ge 1 ]; then
@@ -425,6 +446,9 @@ while true; do
 
 			cp "$tmp_file" "$issue_file" || panic "cannot copy file"
 
+			ln -s "issues/$(basename "$issue_file")" "$old_issue_file" || \
+			  panic "cannot create symlink"
+
 			if [ "$enable_issues" -ne 0 ]; then
 				issue_url="$( (cd "$repo_dir" && \
 				  "$ari_hub" issue create -m "$message") )"
@@ -442,11 +466,16 @@ while true; do
 
 		fi
 
-		if [ "$first" -eq 0 ]; then
-			eecho "sleeping"
-			sleep 10 || panic "sleep failed"
-		fi
+		#if [ "$first" -eq 0 ]; then
+		eecho "sleep $inter_item_sleep"
+		sleep "$inter_item_sleep" || panic "sleep failed"
+		eecho "sleep complete"
+		#fi
 	done
+
+	eecho "sleep $inter_iter_sleep"
+	sleep "$inter_iter_sleep" || panic "sleep failed"
+	eecho "sleep complete"
 
 	first=0
 	iter_no=$((iter_no + 1))
