@@ -211,7 +211,8 @@ git)
 	  panic "cannot checkout branch/tag $in_subtype in repository $in_source"
 
 	# Get the commit history.
-	(chdir "$dist_dir" && git log "$in_subtype") > "$commit_history_file" || \
+	(chdir "$dist_dir" && \
+	  git log --reverse "$in_subtype") > "$commit_history_file" || \
 	  panic "cannot get commit history"
 
 	# Get the commit ID that has been checked out.
