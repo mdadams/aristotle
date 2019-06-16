@@ -370,7 +370,7 @@ while true; do
 				  -a "$project" "package-$package/tests")) || \
 				  panic "cannot get test targets"
 
-				optional=$("$ari_info" \
+				package_optional=$("$ari_info" \
 				  -a "$project" "package-$package/optional") || \
 				  panic "cannot get optional"
 
@@ -416,8 +416,17 @@ while true; do
 				fi
 
 				for target in "${test_targets[@]}"; do
+
+					test_optional=$("$ari_info" \
+					  -a "$project" \
+					  "package-$package/test-$target/optional") || \
+					  panic "cannot get optional"
+
 					# Do not provide information about optional test targets.
-					if [ "$optional" -ne 0 ]; then
+					if [ "$package_optional" -ne 0 ]; then
+						continue
+					fi
+					if [ "$test_optional" -ne 0 ]; then
 						continue
 					fi
 					test_status_file="$package_dir/test-$target/status"
