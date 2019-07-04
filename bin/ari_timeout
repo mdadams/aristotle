@@ -26,6 +26,9 @@
 # Reference: http://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html#timeout-invocation
 # Reference: http://www.gnu.org/software/coreutils/manual/html_node/env-invocation.html#env-invocation
 
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities"
+
 usage()
 {
 	if [ $# -gt 0 ]; then
@@ -76,7 +79,7 @@ kill_after_timeout=10
 verbose=0
 environment=()
 
-while getopts t:D:vk:s:E option; do
+while getopts t:D:vk:s:Eb option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -91,6 +94,8 @@ while getopts t:D:vk:s:E option; do
 	E)
 		environment+=("LIBC_FATAL_STDERR_=1")
 		;;
+	b)
+		allow_break=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -105,31 +110,34 @@ program_file="$1"
 shift 1
 program_options=("$@")
 
-program_name=$(basename "$program_file") || panic
+program_name=$(basename "$program_file") || panic "cannot get basename"
 
 if [ -n "$timeout" ]; then
 	if [ "$allow_break" -ne 0 ]; then
 		pid=
 		trap '[ -n "$pid" ] && kill -INT -$pid' INT
-		env "${environment[@]}" timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
-		  "$program_file" "${program_options[@]}" &
-		pid=$!
-		wait $pid
+		env "${environment[@]}" \
+		  timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
+		  "$program_file" "${program_options[@]}" <&0 &
+		pid="$!"
+		wait "$pid"
 		status=$?
 	else
-		env "${environment[@]}" timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
+		env "${environment[@]}" \
+		  timeout -s "$signal" -k "$kill_after_timeout" "${timeout}s" \
 		  "$program_file" "${program_options[@]}"
 		status=$?
 	fi
 else
-	env "${environment[@]}" "$program_file" "${program_options[@]}"
+	env "${environment[@]}" \
+	  "$program_file" "${program_options[@]}"
 	status=$?
 fi
 
 if [ "$verbose" -ge 1 ]; then
 	if [ -n "$timeout" -a \
 	  \( "$status" -eq 124 -o "$status" -eq 137 \) ]; then
-			echo "program $program_name terminated due to run time exceeding $timeout seconds"
+			eecho "program $program_name terminated due to run time exceeding $timeout seconds"
 	fi
 fi
 
