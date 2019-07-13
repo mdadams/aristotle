@@ -206,6 +206,7 @@ while true; do
 		tmp_file="$tmp_dir/hub_issue"
 		time="$(date +%Y-%m-%d-%H-%M-%S)" || panic "cannot get time"
 		issue_file="$issue_dir/issue-$time"
+		workspace_valid=0
 
 		if [ "$verbose" -ge 1 ]; then
 			cat <<- EOF
@@ -247,6 +248,14 @@ while true; do
 
 			(cd "$repo_dir" && git checkout -q "$branch") || \
 			  panic "cannot checkout"
+
+			# Get the commit ID that has been checked out.
+			commit_id=$( (cd "$repo_dir" && git rev-parse HEAD) ) || \
+			  panic "cannot get commit ID of HEAD"
+			if [ -z "$commit_id" ]; then
+				panic "bad commit ID"
+			fi
+
 			ari_import1_options=()
 			if [ "$verbose" -ge 1 ]; then
 				ari_import1_options+=(-v)
@@ -255,19 +264,22 @@ while true; do
 			  -t git_working_tree -i "$repo_dir" -d "$workspace_dir" \
 			  2> /dev/null
 			status=$?
-			if [ "$status" -ne 0 ]; then
-				if [ "$verbose" -ge 1 ]; then
-					eecho "warning: skipping $repo_name due to import failure"
-				fi
-				skip=1
+			#if [ "$status" -ne 0 ]; then
+			#	#if [ "$verbose" -ge 1 ]; then
+			#	#	eecho "warning: skipping $repo_name due to import failure"
+			#	#fi
+			#	workspace_valid=0
+			#	#skip=1
+			#else
+			#	workspace_valid=1
+			#fi
+			if [ "$status" -eq 0 ]; then
+				workspace_valid=1
 			fi
 
 		fi
 
 		if [ "$skip" -eq 0 ]; then
-
-			project="$(cat "$workspace_dir/assignment_id")" || \
-			  panic "cannot get assignment ID"
 
 			if [ -f "$old_commit_id_file" ]; then
 				old_commit_id="$(cat "$old_commit_id_file")" || \
@@ -275,10 +287,16 @@ while true; do
 			else
 				old_commit_id=
 			fi
-			commit_id="$(cat "$commit_id_file")" || \
-			  panic "cannot get commit ID"
-			if [ -z "$commit_id" ]; then
-				panic "bad commit ID"
+
+			if [ "$workspace_valid" -ne 0 ]; then
+				workspace_commit_id="$(cat "$commit_id_file")" || \
+				  panic "cannot get commit ID"
+				if [ -z "$commit_id" ]; then
+					panic "bad commit ID"
+				fi
+				if [ "$workspace_commit_id" != "$commit_id" ]; then
+					panic "commit ID mismatch detected"
+				fi
 			fi
 
 			if [ "$debug_level" -ge 1 ]; then
@@ -294,18 +312,33 @@ while true; do
 
 		fi
 
-		printf "" > "$tmp_file" || panic "cannot create temporary file"
-		printf "%s\n\n" "Status: Commit $commit_id" >> "$tmp_file" || \
-		  panic "cannot append to temporary file"
-		printf "Commit ID: $commit_id\n" >> "$tmp_file" || \
-		  panic "cannot append to temporary file"
+		if [ "$skip" -eq 0 -a "$workspace_valid" -ne 0 ]; then
+
+			project="$(cat "$workspace_dir/assignment_id")" || \
+			  panic "cannot get assignment ID"
+
+		fi
 
 		if [ "$skip" -eq 0 ]; then
+
+			printf "" > "$tmp_file" || panic "cannot create temporary file"
+			printf "%s\n\n" "Status: Commit $commit_id" >> "$tmp_file" || \
+			  panic "cannot append to temporary file"
+			printf "Commit ID: $commit_id\n" >> "$tmp_file" || \
+			  panic "cannot append to temporary file"
+
+			if [ "$workspace_valid" -eq 0 ]; then
+				printf "import failed\n" >> "$tmp_file"
+			fi
 
 			if [ -L "$old_issue_file" ]; then
 				rm -f "$old_issue_file" || \
 				  panic "cannot remove $old_issue_file"
 			fi
+
+		fi
+
+		if [ "$skip" -eq 0 -a "$workspace_valid" -ne 0 ]; then
 
 			ari_process_options=()
 			if [ "$verbose" -ge 1 ]; then
@@ -317,12 +350,22 @@ while true; do
 			ari_process "${ari_process_options[@]}" "$workspace_dir"
 			status=$?
 
-			if [ -f "$validate_status_file" ]; then
-				validate_status=$(cat "$validate_status_file") || \
-				  panic "cannot get validate status"
+		fi
+
+		if [ "$skip" -eq 0 ]; then
+			if [ "$workspace_valid" -ne 0 ]; then
+				if [ -f "$validate_status_file" ]; then
+					validate_status=$(cat "$validate_status_file") || \
+					  panic "cannot get validate status"
+				else
+					validate_status=1
+				fi
 			else
 				validate_status=1
 			fi
+		fi
+
+		if [ "$skip" -eq 0 ]; then
 			if [ "$validate_status" -eq 0 ]; then
 				packages=($("$ari_info" -a "$project" packages)) || \
 				  panic "cannot get package list"
@@ -330,6 +373,9 @@ while true; do
 				packages=()
 				printf "validation failed\n" >> "$tmp_file"
 			fi
+		fi
+
+		if [ "$skip" -eq 0 -a "$workspace_valid" -ne 0 ]; then
 
 			if [ "$debug_level" -ge 1 ]; then
 				eecho "packages:"
@@ -445,6 +491,11 @@ while true; do
 				printf "</pre>\n" >> "$tmp_file" || \
 				  panic "cannot append to temporary file"
 			fi
+
+		fi
+
+		if [ "$skip" -eq 0 ]; then
+
 			message="$(cat "$tmp_file")" || panic "cat failed"
 			echo
 			cat <<- EOF
