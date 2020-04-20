@@ -42,6 +42,22 @@ panic()
 	exit 1
 }
 
+find_python()
+{
+	local prog_name
+	local prog_path
+	local prog_names
+	#prog_names=(python2 python python3)
+	prog_names=(python3 python python2)
+	for prog_name in "${prog_names[@]}"; do
+		prog_path=$(type -P "$prog_name")
+		if [ $? -eq 0 ]; then
+			echo "$prog_path" || return 1
+			return 0
+		fi
+	done
+}
+
 # Note: Some systems treat "cd ''" as equivalent to "cd .".
 chdir()
 {
@@ -269,15 +285,11 @@ check_for_ssh_key()
 	fi
 }
 
-#function time_in_nanoseconds()
-#{
-#	date +%s%N
-#	#python -c'import time; print repr(int(1e9 * time.time()))'
-#}
-
 function time_since_epoch()
 {
-	python -c'import time; print repr(time.time())'
+	local python_program
+	python_program=$(find_python) || return 1
+	"$python_program" -c'import time; print(time.time())'
 }
 
 #function real_arithmetic()
