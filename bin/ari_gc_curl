@@ -81,9 +81,32 @@ if [ -f "$gc_token_file" ]; then
 	gc_token=$(cat "$gc_token_file") || gc_token=
 fi
 
+enable_version_check=0
+if [ "$enable_version_check" -ne 0 ]; then
+	curl_min_version="7.55.0"
+	curl_version=$(curl --version | awk '(NR == 1) {print $2;}') || \
+	  panic "cannot get curl version"
+	if [ "$debug_level" -ge 1 ]; then
+		echo "curl version $curl_version"
+	fi
+	compare_result=$(compare_versions "$curl_version" "$curl_min_version") || \
+	  panic "cannot compare versions"
+	if [ "$compare_result" -ge 0 ]; then
+		has_header_from_file=1
+	else
+		has_header_from_file=0
+	fi
+else
+	has_header_from_file=0
+fi
+
 if [ -n "$gc_user" -a -n "$gc_token" ]; then
 	# Note: Do not allow the token appear as a command-line argument.
-	curl -s -H @- <<< "Authorization: token $gc_token" "$@"
+	if [ "$has_header_from_file" -ne 0 ]; then
+		curl -s -H @- <<< "Authorization: token $gc_token" "$@"
+	else
+		curl -K - -s <<< "-H \"Authorization: token $gc_token\"" "$@"
+	fi
 elif [ -n "$gc_user" -a -f "$gc_password_file" ]; then
 	# Note: Do not allow the password appear as a command-line argument.
 	curl -K - -s "$@" <<< 'user = "'"$gc_user:$(cat $gc_password_file)"'"'
