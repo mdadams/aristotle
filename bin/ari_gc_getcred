@@ -30,17 +30,20 @@ user_config_dir="$HOME/.aristotle"
 gc_username_file="$user_config_dir/gc_username"
 gc_password_file="$user_config_dir/gc_password"
 gc_token_file="$user_config_dir/gc_token"
+gh_token_file="$user_config_dir/gh_token"
 
 get_token()
 {
 	if [ -n "$ARI_GH_TOKEN" ]; then
 		echo "$ARI_GH_TOKEN" || panic "echo failed"
-	elif [ -n "$GITHUB_TOKEN" ]; then
-		echo "$GITHUB_TOKEN" || panic "echo failed"
-	elif [ -n "$GH_TOKEN" ]; then
-		echo "$GH_TOKEN" || panic "echo failed"
+	#elif [ -n "$GITHUB_TOKEN" ]; then
+	#	echo "$GITHUB_TOKEN" || panic "echo failed"
+	#elif [ -n "$GH_TOKEN" ]; then
+	#	echo "$GH_TOKEN" || panic "echo failed"
 	elif [ -f "$gc_token_file" ]; then
 		cat "$gc_token_file" || panic "cat failed"
+	elif [ -f "$gh_token_file" ]; then
+		cat "$gh_token_file" || panic "cat failed"
 	else
 		panic "cannot determine GitHub personal authentication token (PAT)"
 	fi
