@@ -54,9 +54,6 @@ usage()
 
 ari_gc_curl="$cmd_dir/ari_gc_curl"
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-
 org_name=
 debug_level=0
 verbose=0
@@ -76,10 +73,6 @@ while getopts D:o:vq option; do
 	esac
 done
 shift $((OPTIND - 1))
-
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
-fi
 
 if [ -z "$org_name" ]; then
 	usage "no organization specified"

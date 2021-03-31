@@ -46,11 +46,7 @@ usage()
 	exit 2
 }
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-gc_username_file="$user_config_dir/gc_username"
-gc_password_file="$user_config_dir/gc_password"
-gc_token_file="$user_config_dir/gc_token"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 debug_level=${ARI_DEBUG_LEVEL:-0}
 
@@ -70,15 +66,12 @@ if [ "$debug_level" -ge 1 ]; then
 	set -xv
 fi
 
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
-fi
+gc_token=$("$ari_gc_getcred" -k token) || gc_token=
+gc_username=$("$ari_gc_getcred" -k username) || gc_username=
+gc_password=$("$ari_gc_getcred" -k password) || gc_password=
 
-if [ -f "$gc_username_file" ]; then
-	gc_user=$(cat "$gc_username_file") || gc_user=
-fi
-if [ -f "$gc_token_file" ]; then
-	gc_token=$(cat "$gc_token_file") || gc_token=
+if [ -z "$gc_token" -a \( -z "$gc_username" -o -z "$gc_password" \) ]; then
+	panic "cannot determine GitHub Classroom credentials"
 fi
 
 enable_version_check=0
@@ -100,16 +93,22 @@ else
 	has_header_from_file=0
 fi
 
-if [ -n "$gc_user" -a -n "$gc_token" ]; then
+if [ "$debug_level" -ge 1 ]; then
+	eecho "username $gc_username"
+	eecho "password $gc_password"
+	eecho "token $gc_token"
+fi
+
+if [ -n "$gc_token" ]; then
 	# Note: Do not allow the token appear as a command-line argument.
 	if [ "$has_header_from_file" -ne 0 ]; then
 		curl -s -H @- <<< "Authorization: token $gc_token" "$@"
 	else
 		curl -K - -s <<< "-H \"Authorization: token $gc_token\"" "$@"
 	fi
-elif [ -n "$gc_user" -a -f "$gc_password_file" ]; then
+elif [ -n "$gc_username" -a -f "$gc_password_file" ]; then
 	# Note: Do not allow the password appear as a command-line argument.
-	curl -K - -s "$@" <<< 'user = "'"$gc_user:$(cat $gc_password_file)"'"'
+	curl -K - -s "$@" <<< 'user = "$gc_username:$gc_password"'
 else
-	curl -u "$gc_user" -s "$@"
+	curl -u "$gc_username" -s "$@"
 fi

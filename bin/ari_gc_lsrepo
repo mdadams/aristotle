@@ -57,9 +57,6 @@ usage()
 
 ari_gc_curl="$cmd_dir/ari_gc_curl"
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-
 newline="
 "
 
@@ -89,10 +86,6 @@ shift $((OPTIND - 1))
 
 if [ "$debug_level" -ge 10 ]; then
 	set -xv
-fi
-
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
 fi
 
 if [ "${#org_names[@]}" -eq 0 ]; then

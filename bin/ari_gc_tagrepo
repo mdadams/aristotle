@@ -76,9 +76,6 @@ ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_tagremote="$cmd_dir/ari_git_tagremote"
 ari_gpg="$abs_cmd_dir/ari_gpg"
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-
 target_time=
 organization=
 assignment=
@@ -149,10 +146,6 @@ fi
 
 if [ "$check_ssh_key" -ne 0 ]; then
 	check_for_ssh_key || panic "no ssh key is available"
-fi
-
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
 fi
 
 if [ "$debug_level" -ge 10 ]; then

@@ -64,9 +64,6 @@ ari_gc_createrepo="$cmd_dir/ari_gc_createrepo"
 ari_gc_deleterepo="$cmd_dir/ari_gc_deleterepo"
 ari_git_makerepo="$cmd_dir/ari_git_makerepo"
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-
 verbose=0
 org_name=
 debug_level=0
@@ -97,10 +94,6 @@ inputs=("$@")
 
 if [ -z "$org_name" ]; then
 	usage "no organization specified"
-fi
-
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
 fi
 
 if [ "$debug_level" -ge 10 ]; then

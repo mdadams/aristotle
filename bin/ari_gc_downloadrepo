@@ -59,9 +59,6 @@ usage()
 ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_copyrepo="$cmd_dir/ari_git_copyrepo"
 
-user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
-
 org_name=
 assignment=
 debug_level=0
@@ -91,10 +88,6 @@ shift $((OPTIND - 1))
 
 if [ -z "$org_name" ]; then
 	usage "no organization specified"
-fi
-
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
 fi
 
 if [ "$debug_level" -ge 10 ]; then
