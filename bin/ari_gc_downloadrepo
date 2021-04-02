@@ -32,6 +32,11 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Download Git repositories associated with assignments on GitHub Classroom.
+	The downloaded repositories are bare clones of the original repositories
+	on GitHub.
+
 	Usage
 	=====
 
@@ -52,24 +57,31 @@ usage()
 	    Increase the verbosity level of output.
 	-q
 	    Decrease the verbosity level of output.
+	-g \$git_proto
+	    Set the protocol to use for Git to \$git_proto.
+	    Valid values for \$git_proto are https and ssh.
 	EOF
 	exit 2
 }
 
 ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_copyrepo="$cmd_dir/ari_git_copyrepo"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 org_name=
 assignment=
 debug_level=0
 out_prefix=
 verbose=0
-delay=2
+git_proto=ssh
+delay=0
 
-while getopts D:o:p:a:vq option; do
+while getopts D:o:p:a:vqg:w: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
+	w)
+		delay="$OPTARG";;
 	p)
 		out_prefix="$OPTARG";;
 	o)
@@ -80,6 +92,16 @@ while getopts D:o:p:a:vq option; do
 		verbose=$((verbose + 1));;
 	q)
 		verbose=$((verbose - 1));;
+	g)
+		case "$OPTARG" in
+		http|https|ssh)
+			;;
+		*)
+			usage "invalid Git protocol"
+			;;
+		esac
+		git_proto="$OPTARG"
+		;;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -97,6 +119,7 @@ fi
 if [ $# -eq 0 ]; then
 	opts=()
 	opts+=(-o "$org_name")
+	opts+=(-f name)
 	if [ -n "$assignment" ]; then
 		opts+=(-a "$assignment")
 	fi
@@ -114,8 +137,8 @@ for repo_name in "${repo_names[@]}"; do
 	repo_no=$((repo_no + 1))
 
 	if [ "$repo_no" -gt 0 ]; then
-		if [ -n "$delay" ]; then
-			sleep "$delay"
+		if [ -n "$delay" -a "$delay" -ne 0 ]; then
+			sleep "$delay" || panic "sleep failed"
 		fi
 	fi
 
@@ -123,17 +146,21 @@ for repo_name in "${repo_names[@]}"; do
 		echo "Processing $repo_name"
 	fi
 
-	repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+	case "$git_proto" in
+	http|https)
+		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
+		  panic "cannot get GitHub username"
+		repo_url="https://$gc_username@github.com/$org_name/$repo_name.git"
+		;;
+	ssh)
+		repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+		;;
+	*)
+		panic "unexpected Git protocol";;
+	esac
 	basename=$(basename "$repo_url" .git) || panic "cannot get basename"
 	out_dir="${out_prefix}$basename.git"
 	info_file="${out_prefix}$basename.txt"
-
-	mkdir -p "$out_dir"
-	if [ $? -ne 0 ]; then
-		failures+=("$repo_name")
-		echo "ERROR: cannot make directory $out_dir"
-		continue
-	fi
 
 	start_time=$(date "+%Y-%m-%d %H:%M:%S")
 	if [ $? -ne 0 ]; then
@@ -144,6 +171,9 @@ for repo_name in "${repo_names[@]}"; do
 
 	opts=()
 	if [ "$verbose" -ge 1 ]; then
+		opts+=(-v)
+	fi
+	if [ "$verbose" -ge 2 ]; then
 		opts+=(-v)
 	fi
 	"$ari_git_copyrepo" "${opts[@]}" -D "$debug_level" "$repo_url" "$out_dir"

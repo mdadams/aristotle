@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Tag a repository.
+
 	Usage
 	=====
 
@@ -42,8 +45,8 @@ usage()
 
 	-D debug_level
 	    Set the debug level to debug_level.
-	-o organization
-	    Set the organization to organization.
+	-o org_name
+	    Set the organization to org_name.
 	-a assignment
 	    Set the assignment to assignment.
 	-w time
@@ -75,9 +78,10 @@ ari_sleep_until="$cmd_dir/ari_sleep_until"
 ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_tagremote="$cmd_dir/ari_git_tagremote"
 ari_gpg="$abs_cmd_dir/ari_gpg"
+ari_gc_getcred="$abs_cmd_dir/ari_gc_getcred"
 
 target_time=
-organization=
+org_name=
 assignment=
 branch=
 tag=
@@ -86,18 +90,22 @@ signing_key=
 debug_level=0
 verbose=0
 all_assignments=0
-delay=1
+#delay=1
+delay=0
 check_ssh_key=1
 rev_time=
+git_proto=ssh
 
-while getopts ZAD:o:w:b:a:t:dck:vqT: option; do
+while getopts ZAD:o:w:W:b:a:t:dck:vqT:g: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
 	o)
-		organization="$OPTARG";;
+		org_name="$OPTARG";;
 	a)
 		assignment="$OPTARG";;
+	W)
+		delay="$OPTARG";;
 	w)
 		target_time="$OPTARG";;
 	b)
@@ -120,6 +128,16 @@ while getopts ZAD:o:w:b:a:t:dck:vqT: option; do
 		all_assignments=1;;
 	Z)
 		check_ssh_key=0;;
+	g)
+		case "$OPTARG" in
+		http|https|ssh)
+			;;
+		*)
+			usage "invalid Git protocol"
+			;;
+		esac
+		git_proto="$OPTARG"
+		;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -131,11 +149,13 @@ if [ $# -gt 0 ]; then
 	repos=("$@")
 fi
 
-if [ -z "$organization" ]; then
+if [ -z "$org_name" ]; then
 	usage "no organization specified"
 fi
-if [ "$all_assignments" -eq 0 -a -z "$assignment" ]; then
-	usage "no assignment specified"
+if [ ${#repos[@]} -eq 0 ]; then
+	if [ "$all_assignments" -eq 0 -a -z "$assignment" ]; then
+		usage "no assignment specified"
+	fi
 fi
 if [ -z "$tag" ]; then
 	usage "no tag specified"
@@ -158,7 +178,7 @@ fi
 
 if [ "${#repos[@]}" -eq 0 ]; then
 	opts=()
-	opts+=(-o "$organization")
+	opts+=(-o "$org_name")
 	if [ -n "$assignment" ]; then
 		opts+=(-a "$assignment")
 	fi
@@ -171,21 +191,40 @@ empty_repos=()
 failed_verify_repos=()
 repo_no="-1"
 
-for repo in "${repos[@]}"; do
+for repo_name in "${repos[@]}"; do
 
 	repo_no=$((repo_no + 1))
 
 	if [ "$repo_no" -gt 0 ]; then
-		if [ -n "$delay" ]; then
-			sleep "$delay"
+		if [ -n "$delay" -a "$delay" -ne 0 ]; then
+			sleep "$delay" || panic "sleep failed"
 		fi
 	fi
 
 	if [ "${#repos[@]}" -ge 2 -a "$verbose" -ge 1 ]; then
-		echo "Processing $repo"
+		echo "Processing $repo_name"
 	fi
 
-	clone_url="ssh://git@github.com/$organization/$repo.git"
+	case "$git_proto" in
+	ssh)
+		clone_url="ssh://git@github.com/$org_name/$repo_name.git"
+		;;
+	http|https)
+		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
+		  gc_username=
+		if [ -n "$gc_username" ]; then
+			clone_url="https://$gc_username@github.com/$org_name/$repo_name.git"
+		else
+			clone_url=
+		fi
+		;;
+	*)
+		panic "unexpected Git protocol";;
+	esac
+	if [ -z "$clone_url" ]; then
+		echo "ERROR: cannot get clone URL"
+		continue
+	fi
 
 	opts=()
 	if [ -n "$rev_time" ]; then
@@ -213,16 +252,16 @@ for repo in "${repos[@]}"; do
 	  "$clone_url"
 	status=$?
 	if [ $status -ne 0 ]; then
-		failed_repos+=("$repo")
+		failed_repos+=("$repo_name")
 		if [ "$status" -eq "$EXIT_STATUS_EMPTY_REPO" ]; then
-			empty_repos+=("$repo")
-			echo "ERROR: could not process empty repository $repo"
+			empty_repos+=("$repo_name")
+			echo "ERROR: could not process empty repository $repo_name"
 		elif [ "$status" -eq "$EXIT_STATUS_VERIFY_TAG_FAILED" ]; then
-			failed_verify_repos+=("$repo")
-			echo "ERROR: verify failed for repository $repo"
+			failed_verify_repos+=("$repo_name")
+			echo "ERROR: verify failed for repository $repo_name"
 		else
-			bad_repos+=("$repo")
-			echo "ERROR: could not process repository $repo"
+			bad_repos+=("$repo_name")
+			echo "ERROR: could not process repository $repo_name"
 		fi
 		continue
 	fi
@@ -235,17 +274,16 @@ done
 if [ "${#failed_repos[@]}" -ne 0 ]; then
 	echo "ERRORS WERE ENCOUNTERED!"
 	echo "The following repositories could not be processed:"
-	for repo in "${bad_repos[@]}"; do
-		echo "    $repo"
+	for repo_name in "${bad_repos[@]}"; do
+		echo "    $repo_name"
 	done
 	echo "The following repositories had verify failures:"
-	for repo in "${failed_verify_repos[@]}"; do
-		echo "    $repo"
+	for repo_name in "${failed_verify_repos[@]}"; do
+		echo "    $repo_name"
 	done
 	echo "The following repositories were empty:"
-	for repo in "${empty_repos[@]}"; do
-		echo "    $repo"
+	for repo_name in "${empty_repos[@]}"; do
+		echo "    $repo_name"
 	done
 	panic "one or more repositories could not be processed"
 fi
-

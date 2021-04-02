@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	List the repositories in a GitHub organization.
+
 	Usage
 	=====
 

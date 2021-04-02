@@ -249,6 +249,32 @@ while true; do
 			perror "no such key $signing_key"
 			break
 		fi
+
+		buffer=$(gpg2 --list-keys --with-colons "$signing_key" | \
+		  awk -v FS=':' '/^uid:/ {print $10;}' -) || \
+		  panic "cannot extract name/email information"
+		user_fullname=$(echo "$buffer" | sed -e 's/[ ]\+<[^][]*>//g') || \
+		  panic "cannot extract name"
+		user_email=$(echo "$buffer" | sed 's/.*<\(.*\)>/\1/') || \
+		  panic "cannot extract email"
+
+		GIT_DIR="$git_dir/.git" \
+		  conditionally_discard_output "$discard_stdout_stderr" \
+		  git config user.email "$user_email"
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "blah"
+			break
+		fi
+		GIT_DIR="$git_dir/.git" \
+		  conditionally_discard_output "$discard_stdout_stderr" \
+		  git config user.name "$user_fullname"
+		if [ $? -ne 0 ]; then
+			command_status=1
+			perror "blah1"
+			break
+		fi
+
 		GIT_DIR="$git_dir/.git" \
 		  conditionally_discard_output "$discard_stdout_stderr" \
 		  git config user.signingkey "$signing_key"

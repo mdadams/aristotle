@@ -32,6 +32,10 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	This program retrieves a release (i.e., a snapshot associate with a
+	specific commit) for one or more assignments in GitHub Classroom.
+
 	Usage
 	=====
 
@@ -74,14 +78,17 @@ out_type=dir
 verbose=0
 verify_sig=0
 branch=
+git_proto=ssh
 
-delay=1
-#delay=
+#delay=1
+delay=0
 
-while getopts D:o:p:a:t:vqcb: option; do
+while getopts D:o:p:a:t:vqcb:g:w: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
+	w)
+		delay="$OPTARG";;
 	p)
 		out_prefix="$OPTARG";;
 	o)
@@ -98,6 +105,16 @@ while getopts D:o:p:a:t:vqcb: option; do
 		verbose=$((verbose + 1));;
 	q)
 		verbose=$((verbose - 1));;
+	g)
+		case "$OPTARG" in
+		http|https|ssh)
+			;;
+		*)
+			usage "invalid Git protocol"
+			;;
+		esac
+		git_proto="$OPTARG"
+		;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -136,8 +153,8 @@ for repo_name in "${repo_names[@]}"; do
 	repo_no=$((repo_no + 1))
 
 	if [ "$repo_no" -gt 0 ]; then
-		if [ -n "$delay" ]; then
-			sleep "$delay"
+		if [ -n "$delay" -a "$delay" -ne 0 ]; then
+			sleep "$delay" || panic "sleep failed"
 		fi
 	fi
 
@@ -145,7 +162,19 @@ for repo_name in "${repo_names[@]}"; do
 		echo "Processing $repo_name"
 	fi
 
-	repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+	case "$git_proto" in
+	ssh)
+		repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+		;;
+	http|https)
+		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
+		  gc_username=
+		repo_url="https://$gc_username@github.com/$org_name/$repo_name.git"
+		;;
+	*)
+		panic "unexpected Git protocol";;
+	esac
+
 	basename="$repo_name"
 
 	case "$out_type" in

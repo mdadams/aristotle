@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Login to GitHub.
+
 	Usage
 	=====
 
@@ -42,12 +45,12 @@ usage()
 
 	-D debug_level
 	    Set the debug level to debug_level.
-	-n name
-	    Set the name used in the note field (for the access token) to name.
 	-u user_name
 	    Set the user name to user_name.
-	-v
-	    Increase the verbosity level of output.
+	-t \$token_file
+	    Sets the file from which to read the GitHub personal-access token
+	    (PAT) as \$token_file.
+	    A value of "-" means standard input.
 	EOF
 	exit 2
 }
@@ -55,34 +58,23 @@ usage()
 user_config_dir="$HOME/.aristotle"
 gc_login_file="$user_config_dir/gc_login"
 gc_username_file="$user_config_dir/gc_username"
-gc_password_file="$user_config_dir/gc_password"
 gc_token_file="$user_config_dir/gc_token"
-gc_id_file="$user_config_dir/gc_id"
-gc_note_file="$user_config_dir/gc_note"
 
 user_name=$(whoami) || panic "cannot get user name"
-host_name=$(hostname) || panic "cannot get host name"
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"
-gc_user="$user_name"
-verbose=0
-name="$user_name@$host_name"
+gc_user=
 use_token=1
+token_file=
 
-while getopts D:u:vn:pt option; do
+while getopts D:u:t: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
-	n)
-		name="$OPTARG";;
 	u)
 		gc_user="$OPTARG";;
-	v)
-		verbose=$((verbose + 1));;
-	p)
-		use_token=0;;
 	t)
-		use_token=1;;
+		token_file="$OPTARG";;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -93,78 +85,20 @@ if [ "$debug_level" -ge 10 ]; then
 	set -xv
 fi
 
-if [ -n "$name" ]; then
-	gc_note="Aristotle --- $name"
-else
-	gc_note="Aristotle"
-fi
-
-if [ -z "$gc_user" ]; then
-	usage "no user name specified"
+if [ -z "$token_file" ]; then
+	usage "no token file specified"
 fi
 
 if [ -f "$gc_login_file" ]; then
 	panic "already logged in"
 fi
 
-if [ "$use_token" -ne 0 ]; then
-	curl_min_version="7.55.0"
-	curl_version=$(curl --version | awk '(NR == 1) {print $2;}') || \
-	  panic "cannot get curl version"
-	if [ "$debug_level" -ge 1 ]; then
-		echo "curl version $curl_version"
-	fi
-	compare_result=$(compare_versions "$curl_version" "$curl_min_version") || \
-	  panic "cannot compare versions"
-	if [ "$compare_result" -lt 0 ]; then
-		echo "warning: using username and password for authentication instead"
-		echo "curl version is $curl_version"
-		echo "for token support, $curl_min_version is required"
-		use_token=0
-	fi
-fi
-
-if [ "$use_token" -ne 0 ]; then
-
-	output=$(curl -s -i -u "$gc_user" \
-	  -d \
-	  '{"scopes": ["repo", "user", "delete_repo"], "note": "'"$gc_note"'"}' \
-	  https://api.github.com/authorizations)
-	curl_status=$?
-
-	http_status=$(egrep -e '^Status:' <<< "$output" | awk '{print $2;}' -)
-
-	if [ "$debug_level" -ge 1 ]; then
-		echo "curl status: $curl_status"
-		echo "HTTP status: $http_status"
-		echo "output:"
-		echo "$output"
-	fi
-
-	if [[ "$curl_status" -ne 0 || "$http_status" != 2?? ]]; then
-		panic "operation failed"
-	fi
-
-	http_header=$(curl_select header <<< "$output") || \
-	  panic "cannot get HTTP header"
-	json_data=$(curl_select body <<< "$output") || \
-	  panic "cannot get JSON data"
-
-	if [ "$debug_level" -ge 1 ]; then
-		echo "JSON data:"
-		echo "$json_data"
-		echo "HTTP header:"
-		echo "$http_header"
-	fi
-
-	gc_token=$(jq -r '.token' <<< "$json_data") || \
+if [ "$token_file" = "-" ]; then
+	gc_token="$(cat)" || \
 	  panic "cannot get token"
-	gc_id=$(jq -r '.id' <<< "$json_data") || \
-	  panic "cannot get id"
-
 else
-	read -s -p "Password for user $gc_user: " gc_password
-	echo
+	gc_token="$(cat "$token_file")" || \
+	  panic "cannot get token"
 fi
 
 umask 077
@@ -175,30 +109,20 @@ if [ ! -d "$user_config_dir" ]; then
 	chmod g-rwx,o-rwx "$user_config_dir" || \
 	  panic "cannot set permissions for directory $user_config_dir"
 fi
-for file in "$gc_username_file" "$gc_password_file" "$gc_token_file" \
-  "$gc_id_file" "$gc_note_file"; do
+for file in "$gc_username_file" "$gc_token_file"; do
 	if [ -f "$file" ]; then
 		rm "$file" || panic "cannot remove file $file"
 	fi
 done
 
-cat >"$gc_username_file" <<< "$gc_user" || \
-  panic "cannot create gc_username file"
-if [ "$use_token" -ne 0 ]; then
-	cat > "$gc_id_file" <<< "$gc_id" || \
-	  panic "cannot create gc_id file"
-	cat > "$gc_token_file" <<< "$gc_token" || \
-	  panic "cannot create gc_token file"
-	cat >"$gc_note_file" <<< "$gc_note" || \
-	  panic "cannot create gc_note file"
-	# This following is just a failsafe (in case the umask is set wrong.
-	chmod g-rwx,o-rwx "$gc_token_file" || \
-	  panic "cannot set permissions for file $gc_token_file"
-else
-	cat > "$gc_password_file" <<< "$gc_password" || \
-	  panic "cannot create gc_password file"
-	# This following is just a failsafe (in case the umask is set wrong.
-	chmod g-rwx,o-rwx "$gc_password_file" || \
-	  panic "cannot set permissions for file $gc_password_file"
+if [ -n "$gc_username" ]; then
+	cat >"$gc_username_file" <<< "$gc_user" || \
+	  panic "cannot create gc_username file"
 fi
+cat > "$gc_token_file" <<< "$gc_token" || \
+  panic "cannot create gc_token file"
+# This following is just a failsafe (in case the umask is set wrong.
+chmod g-rwx,o-rwx "$gc_token_file" || \
+  panic "cannot set permissions for file $gc_token_file"
+
 cat > "$gc_login_file" <<< "logged in"

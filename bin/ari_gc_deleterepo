@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Delete a GitHub repository.
+
 	Usage
 	=====
 
@@ -87,24 +90,24 @@ for repo_name in "${repo_names[@]}"; do
 		echo "Deleting repository $repo_name"
 	fi
 
-	output=$("$ari_gc_curl" -- -s -i -X DELETE \
+	buffer=$("$ari_gc_curl" -- -s -i -X DELETE \
 	  "https://api.github.com/repos/$org_name/$repo_name")
 	curl_status=$?
-	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
+	header_buffer=$(echo "$buffer" | curl_select header) || \
+	  panic "cannot get header"
+	json_buffer=$(echo "$buffer" | curl_select body) || \
+	  panic "cannot get body"
+	http_status=$(extract_http_status <<< "$buffer")
 	if [ "$debug_level" -ge 1 ]; then
 		echo "curl status: $curl_status"
 		echo "HTTP status: $http_status"
 		echo "output:"
-		echo "$output"
+		echo "$buffer"
 	fi
-	if [ "$curl_status" -ne 0 ]; then
-		echo "curl failed ($curl_status)"
+	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
 		failures+=("$repo_name")
-		continue
-	fi
-	if [[ $http_status != 2?? ]]; then
-		echo "http failed ($http_status)"
-		failures+=("$repo_name")
+		echo "ERROR: cannot delete repository $repo_name ($curl_status $http_status)"
+		eecho "GITHUB ERROR: $(echo "$json_buffer" | jq .message)"
 		continue
 	fi
 

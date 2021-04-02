@@ -26,9 +26,17 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
+perform_cleanup()
+{
+	if [ -n "$tmp_dir" -a -d "$tmp_dir" ]; then
+		rm -rf "$tmp_dir" || \
+		  echo "warning: cannot remove temporary directory $tmp_dir"
+	fi
+}
+
 perror()
 {
-	echo "ERROR: $@"
+	eecho "ERROR: $@"
 }
 
 usage()
@@ -37,10 +45,16 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Retrieves a release snapshot from Git repository.
+	This retrieves the snapshot associated with a particular commit in a Git
+	repository.
+	The snapshot can be placed in either a directory or archive file.
+
 	Usage
 	=====
 
-	$0 [options]
+	$0 [options] repo output_file
 
 	Options
 	=======
@@ -61,8 +75,7 @@ usage()
 }
 
 user_name=$(whoami) || panic "cannot determine user"
-host_name=$(hostname) || panic "cannot determine hostname"
-tmp_dir_template="/tmp/ari_git_makerelease-${user_name}@${host_name}-$$-XXXXXXXX"
+tmp_dir_template="/tmp/ari_git_makerelease-${user_name}-XXXXXXXX"
 
 ari_mktemp="$cmd_dir/ari_mktemp"
 ari_git_isempty="$cmd_dir/ari_git_isempty"
@@ -116,144 +129,98 @@ else
 	discard_stdout_stderr=stdout_stderr
 fi
 
-command_status=0
-while true; do
-
-	if [ -z "$output_type" ]; then
-		case "$output_file" in
-		*.tar.gz|*.tgz)
-			output_type=tgz;;
-		*.zip)
-			output_type=zip;;
-		*)
-			output_type=dir;;
-		esac
-	fi
-
-	# Note: should we also use -L here?
-	if [ -e "$output_file" ]; then
-		command_status=1
-		perror "output already exists $output_file"
-		break
-	fi
-
-	tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template")
-	if [ $? -ne 0 ]; then
-		command_status=1
-		perror "cannot make temporary directory"
-		break
-	fi
-
-	# Clone the repository.
-	conditionally_discard_output "$discard_stdout_stderr" \
-	  git clone -q "$repo" "$tmp_dir"
-	if [ $? -ne 0 ]; then
-		command_status=1
-		perror "cannot clone repository $repo"
-		break
-	fi
-
-	# Check for an empty repository.
-	empty_repo="$(GIT_DIR="$tmp_dir/.git" \
-	  conditionally_discard_output "$discard_stderr" "$ari_git_isempty")" || \
-	  panic "check for empty repository failed"
-	if [ "$empty_repo" -ne 0 ]; then
-		command_status=1
-		perror "cannot process empty repository"
-		break
-	fi
-
-	if [ "$verify_sig" -ne 0 ]; then
-
-		# Check for the existence of the tag.
-		GIT_DIR="$tmp_dir/.git" \
-		  conditionally_discard_output "$discard_stdout_stderr" \
-		  git rev-parse -q --verify "$branch"
-		if [ $? -ne 0 ]; then
-			tag_found=0
-		else
-			tag_found=1
-		fi
-		if [ "$tag_found" -ne 0 ]; then
-			GIT_DIR="$tmp_dir/.git" \
-			  conditionally_discard_output "$discard_stdout_stderr" \
-			  git tag -v "$branch"
-			if [ $? -ne 0 ]; then
-				command_status="$EXIT_STATUS_VERIFY_TAG_FAILED"
-				perror "tag verification failure"
-				break
-			fi
-			# Output verification results in more desirable format.
-			GIT_DIR="$tmp_dir/.git" git verify-tag "$branch" 2>&1
-		else
-			command_status="$EXIT_STATUS_VERIFY_TAG_FAILED"
-			perror "tag not found"
-			break
-		fi
-		if [ "$verbose" -ge 1 ]; then
-			echo "tag verification successful"
-		fi
-	fi
-
-	# Checkout the desired branch/tag.
-	if [ -n "$branch" ]; then
-		(chdir "$tmp_dir" &&
-		  conditionally_discard_output "$discard_stdout_stderr" \
-		  git checkout "$branch")
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot checkout branch/tag $branch"
-			break
-		fi
-	fi
-
-	# Remove the Git repository directory.
-	rm -rf "$tmp_dir/.git"
-	if [ $? -ne 0 ]; then
-		command_status=1
-		perror "cannot remove git repository directory"
-		break
-	fi
-
-	case "$output_type" in
-	dir)
-		mkdir -p "$output_file"
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot make directory"
-			break
-		fi
-		tar -c -f - -C "$tmp_dir" . | tar -x -f - -C "$output_file"
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot copy files"
-			break
-		fi
-		;;
-	zip)
-		(chdir "$tmp_dir" && zip -q -r - .) > "$output_file"
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot create archive"
-			break
-		fi
-		;;
-	tgz)
-		tar -c -z -f - -C "$tmp_dir" . > "$output_file"
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot create archive"
-			break
-		fi
-		;;
+if [ -z "$output_type" ]; then
+	case "$output_file" in
+	*.tar.gz|*.tgz)
+		output_type=tgz;;
+	*.zip)
+		output_type=zip;;
+	*)
+		output_type=dir;;
 	esac
-
-	break
-
-done
-
-if [ -d "$tmp_dir" -a "$cleanup" -ne 0 ]; then
-	rm -rf "$tmp_dir"
 fi
 
-exit "$command_status"
+# Note: should we also use -L here?
+if [ -e "$output_file" ]; then
+	panic "output already exists $output_file"
+fi
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+if [ "$cleanup" -ne 0 ]; then
+	trap perform_cleanup EXIT
+fi      
+
+# Clone the repository.
+conditionally_discard_output "$discard_stdout_stderr" \
+  git clone -q "$repo" "$tmp_dir" || \
+  panic "cannot clone repository $repo"
+
+# Check for an empty repository.
+empty_repo="$(GIT_DIR="$tmp_dir/.git" \
+  conditionally_discard_output "$discard_stderr" "$ari_git_isempty")" || \
+  panic "check for empty repository failed"
+if [ "$empty_repo" -ne 0 ]; then
+	panic "cannot process empty repository"
+fi
+
+if [ "$verify_sig" -ne 0 ]; then
+
+	# Check for the existence of the tag.
+	GIT_DIR="$tmp_dir/.git" \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git rev-parse -q --verify "$branch"
+	if [ $? -ne 0 ]; then
+		tag_found=0
+	else
+		tag_found=1
+	fi
+	if [ "$tag_found" -ne 0 ]; then
+		GIT_DIR="$tmp_dir/.git" \
+		  conditionally_discard_output "$discard_stdout_stderr" \
+		  git tag -v "$branch"
+		if [ $? -ne 0 ]; then
+			perror "tag verification failure"
+			exit "$EXIT_STATUS_VERIFY_TAG_FAILED"
+		fi
+		# Output verification results in more desirable format.
+		GIT_DIR="$tmp_dir/.git" git verify-tag "$branch" 2>&1
+	else
+		perror "tag not found"
+		exit "$EXIT_STATUS_VERIFY_TAG_FAILED"
+	fi
+	if [ "$verbose" -ge 1 ]; then
+		echo "tag verification successful"
+	fi
+fi
+
+# Checkout the desired branch/tag.
+if [ -n "$branch" ]; then
+	(chdir "$tmp_dir" &&
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git checkout "$branch") || \
+	  panic "cannot checkout branch/tag $branch"
+fi
+
+# Remove the Git repository directory.
+rm -rf "$tmp_dir/.git" || \
+  panic "cannot remove git repository directory"
+
+case "$output_type" in
+dir)
+	mkdir -p "$output_file" || \
+	  panic "cannot make directory"
+	tar -c -f - -C "$tmp_dir" . | tar -x -f - -C "$output_file" || \
+	  panic "cannot copy files"
+	;;
+zip)
+	(chdir "$tmp_dir" && zip -q -r - .) > "$output_file" || \
+	  panic "cannot create archive"
+	;;
+tgz)
+	tar -c -z -f - -C "$tmp_dir" . > "$output_file" || \
+	  panic "cannot create archive"
+	;;
+esac
+
+exit 0

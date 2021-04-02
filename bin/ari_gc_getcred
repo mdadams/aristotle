@@ -28,7 +28,6 @@ source "$cmd_dir/utilities" || exit 1
 
 user_config_dir="$HOME/.aristotle"
 gc_username_file="$user_config_dir/gc_username"
-gc_password_file="$user_config_dir/gc_password"
 gc_token_file="$user_config_dir/gc_token"
 gh_token_file="$user_config_dir/gh_token"
 
@@ -36,10 +35,10 @@ get_token()
 {
 	if [ -n "$ARI_GH_TOKEN" ]; then
 		echo "$ARI_GH_TOKEN" || panic "echo failed"
-	#elif [ -n "$GITHUB_TOKEN" ]; then
-	#	echo "$GITHUB_TOKEN" || panic "echo failed"
-	#elif [ -n "$GH_TOKEN" ]; then
-	#	echo "$GH_TOKEN" || panic "echo failed"
+	elif [ -n "$GITHUB_TOKEN" ]; then
+		echo "$GITHUB_TOKEN" || panic "echo failed"
+	elif [ -n "$GH_TOKEN" ]; then
+		echo "$GH_TOKEN" || panic "echo failed"
 	elif [ -f "$gc_token_file" ]; then
 		cat "$gc_token_file" || panic "cat failed"
 	elif [ -f "$gh_token_file" ]; then
@@ -51,19 +50,12 @@ get_token()
 
 get_username()
 {
-	if [ -f "$gc_username_file" ]; then
+	if [ -n "$ARI_GH_USER" ]; then
+		echo "$ARI_GH_USER" || panic "echo failed"
+	elif [ -f "$gc_username_file" ]; then
 		cat "$gc_username_file" || panic "cat failed"
 	else
-		panic "cannot determine GitHub username"
-	fi
-}
-
-get_password()
-{
-	if [ -f "$gc_password_file" ]; then
-		cat "$gc_password_file" || panic "cat failed"
-	else
-		panic "cannot determine GitHub password"
+		echo "aristotle" || panic "echo failed"
 	fi
 }
 
@@ -73,6 +65,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Get the credentials to be used for a GitHub user (e.g., PAT).
+
 	Usage
 	=====
 
@@ -121,9 +116,7 @@ for key in "${keys[@]}"; do
 	case "$key" in
 	username)
 		get_username;;
-	password)
-		get_password;;
-	token)
+	token|password)
 		get_token;;
 	*)
 		;;

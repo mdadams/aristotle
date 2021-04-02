@@ -74,13 +74,13 @@ chdir()
 }
 
 # Reference: https://coderwall.com/p/dsfmwa/securely-use-basic-auth-with-curl
-auth_curl()
-{
-	local password_file="$1"
-	shift 1
-	#eecho 'user = "'"$user:$(cat $password_file)"'"'
-	echo 'user = "'"$user:$(cat $password_file)"'"' | curl -K - -s "$@"
-}
+#auth_curl()
+#{
+#	local password_file="$1"
+#	shift 1
+#	#eecho 'user = "'"$user:$(cat $password_file)"'"'
+#	echo 'user = "'"$user:$(cat $password_file)"'"' | curl -K - -s "$@"
+#}
 
 count_lines()
 {
@@ -267,7 +267,12 @@ is_dir_empty()
 
 # Concatenate the elements of an array into a single string with the array
 # elements separated by the specified character.
-function join_by { local IFS="$1"; shift; echo -n "$*"; }
+join_by()
+{
+	local IFS="$1"
+	shift
+	echo -n "$*"
+}
 
 check_for_ssh_key()
 {
@@ -285,20 +290,12 @@ check_for_ssh_key()
 	fi
 }
 
-function time_since_epoch()
+time_since_epoch()
 {
 	local python_program
 	python_program=$(find_python) || return 1
 	"$python_program" -c'import time; print(time.time())'
 }
-
-#function real_arithmetic()
-#{
-#	if [ $# -ne  1 ]; then
-#		return 1
-#	fi
-#	awk 'BEGIN{print '"$1"';}' /dev/null
-#}
 
 print_status()
 {
@@ -438,4 +435,24 @@ compare_versions()
 		i=$((i + 1))
 	done
 	echo "$result"
+}
+
+# extract HTTP status from header
+extract_http_status()
+{
+	local buffer="$(cat)" || return 1
+	awk '
+		BEGIN {
+			status = 1;
+		}
+		/^HTTP\/[0-9]+/ {
+			if (NR == 1) {
+				print $2;
+				status = 0;
+			}
+		}
+		END {
+			exit status;
+		}
+	' - <<< "$buffer"
 }

@@ -77,7 +77,7 @@ in_subtype=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
 verify_sig=0
-delay=
+delay=0
 
 while getopts vd:p:D:i:a:t:s:cw: option; do
 	case "$option" in
@@ -131,7 +131,7 @@ failed_sources=()
 
 for in_source in "${in_sources[@]}"; do
 
-	if [ -n "$delay" ]; then
+	if [ -n "$delay" -a "$delay" -ne 0 ]; then
 		sleep "$delay" || panic "sleep failed"
 	fi
 

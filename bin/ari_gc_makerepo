@@ -23,12 +23,23 @@
 # 
 # __END_OF_LICENSE__
 
-cmd_dir=$(dirname "$0") || exit 1
+cmd_dir="$(dirname "$0")" || exit 1
 source "$cmd_dir/utilities" || exit 1
 
 perror()
 {
 	echo "ERROR: $@"
+}
+
+perform_cleanup()
+{
+	if [ -n "$tmp_org_name" -a -n "$tmp_repo_name" ]; then
+		eecho "deleting partially constructed repository $tmp_org_name $tmp_repo_name"
+		"$ari_gc_deleterepo" -o "$tmp_org_name" "$tmp_repo_name" 2> /dev/null
+		if [ $? -ne 0 ]; then
+			eecho "warning: cannot delete partially constructed repository"
+		fi
+	fi
 }
 
 usage()
@@ -37,6 +48,11 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Create a new Git repository on GitHub and populate the repository
+	with particular content.
+	A repository is created for each input source.
+
 	Usage
 	=====
 
@@ -63,17 +79,31 @@ usage()
 ari_gc_createrepo="$cmd_dir/ari_gc_createrepo"
 ari_gc_deleterepo="$cmd_dir/ari_gc_deleterepo"
 ari_git_makerepo="$cmd_dir/ari_git_makerepo"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 verbose=0
 org_name=
 debug_level=0
 input_type=
-check_ssh_key=1
+git_proto=ssh
+repo=
 
-while getopts ZD:o:vqt: option; do
+while getopts D:o:vqt:g:n: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
+	n)
+		repo="$OPTARG";;
+	g)
+		case "$OPTARG" in
+		http|https|ssh)
+			;;
+		*)
+			usage "invalid Git protocol"
+			;;
+		esac
+		git_proto="$OPTARG"
+		;;
 	o)
 		org_name="$OPTARG";;
 	t)
@@ -82,8 +112,6 @@ while getopts ZD:o:vqt: option; do
 		verbose=$((verbose + 1));;
 	q)
 		verbose=$((verbose - 1));;
-	Z)
-		check_ssh_key=0;;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -100,11 +128,15 @@ if [ "$debug_level" -ge 10 ]; then
 	set -xv
 fi
 
-if [ "$check_ssh_key" -ne 0 ]; then
-	check_for_ssh_key || panic "no ssh key is available"
+if [ -n "$repo" -a ${#inputs[@]} -gt 1 ]; then
+	usage "cannot specify repository name when multiple inputs"
 fi
 
 failures=()
+
+tmp_org_name=
+tmp_repo_name=
+trap perform_cleanup EXIT
 
 for input in "${inputs[@]}"; do
 
@@ -160,6 +192,40 @@ for input in "${inputs[@]}"; do
 		perror "cannot get basename"
 		continue
 	fi
+	if [ -n "$repo" ]; then
+		repo_name="$repo"
+	fi
+
+	case "$git_proto" in
+	ssh)
+		clone_url="ssh://git@github.com/$org_name/$repo_name.git"
+		;;
+	http|https)
+		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
+		  gc_username=
+		if [ -n "$gc_username" ]; then
+			clone_url="https://$gc_username@github.com/$org_name/$repo_name.git"
+		else
+			clone_url=
+		fi
+		;;
+	*)
+		panic "unexpected Git protocol";;
+	esac
+	if [ -z "$clone_url" ]; then
+		perror "cannot get clone URL"
+		continue
+	fi
+
+	failed=0
+
+	############################################################
+	# Create the Git repository
+	############################################################
+
+	# No clean up is necessary.
+	tmp_org_name=
+	tmp_repo_name=
 
 	args=()
 	args+=(-D "$debug_level")
@@ -168,40 +234,65 @@ for input in "${inputs[@]}"; do
 	if [ "$verbose" -ge 2 ]; then
 		echo "Running $ari_gc_createrepo ${args[@]}"
 	fi
-	"$ari_gc_createrepo" "${args[@]}"
-	if [ $? -ne 0 ]; then
-		failures+=("$input")
-		perror "cannot create repository"
-		continue
+	"$ari_gc_createrepo" "${args[@]}" || failed=1
+
+	# Mark repository as needing to be deleted upon failure.
+	if [ "$failed" -eq 0 ]; then
+		tmp_org_name="$org_name"
+		tmp_repo_name="$repo_name"
 	fi
 
-	clone_url="ssh://git@github.com/$org_name/$repo_name.git"
+	############################################################
+	# Populate the Git repository
+	############################################################
 
-	args=()
-	if [ "$verbose" -ge 1 ]; then
-		args+=(-v)
+	if [ "$failed" -eq 0 ]; then
+		args=()
+		if [ "$verbose" -ge 1 ]; then
+			args+=(-v)
+		fi
+		if [ "$verbose" -ge 2 ]; then
+			args+=(-v)
+		fi
+		args+=(-D "$debug_level")
+		args+=(-t "$input_type")
+		args+=("$input")
+		args+=("$clone_url")
+		if [ "$verbose" -ge 2 ]; then
+			echo "Running $ari_git_makerepo ${args[@]}"
+		fi
+		"$ari_git_makerepo" "${args[@]}" || failed=1
+		if [ "$failed" -ne 0 ]; then
+			# No clean up is necessary.
+			tmp_repo_name=
+			tmp_org_name=
+		fi
 	fi
-	args+=(-t "$input_type")
-	args+=("$input")
-	args+=("$clone_url")
-	if [ "$verbose" -ge 2 ]; then
-		echo "Running $ari_git_makerepo ${args[@]}"
-	fi
-	"$ari_git_makerepo" "${args[@]}"
-	if [ $? -ne 0 ]; then
+
+	############################################################
+	# Delete the Git repository upon failure
+	############################################################
+
+	if [ "$failed" -ne 0 -a -n "$tmp_org_name" -a -n "$tmp_repo_name" ]; then
 		failures+=("$input")
 		perror "cannot make repository"
-		#"$ari_gc_deleterepo" -D "$debug_level" -o "$org_name" "$repo_name"
-		#if [ $? -ne 0 ]; then
-		#	perror "cannot delete partially constructed repository"
-		#fi
-		continue
+		"$ari_gc_deleterepo" -D "$debug_level" -o "$org_name" "$repo_name"
+		if [ $? -ne 0 ]; then
+			perror "cannot delete partially constructed repository"
+		fi
+		# No clean up is necessary.
+		tmp_repo_name=
+		tmp_org_name=
 	fi
+
+	# No clean up is necessary.
+	tmp_org_name=
+	tmp_repo_name=
 
 done
 
 if [ "${#failures[@]}" -ne 0 ]; then
-	echo "The following inputs could not be succesfully processed:"
+	echo "The following inputs could not be successfully processed:"
 	for failure in "${failures[@]}"; do
 		echo "    $failure"
 	done

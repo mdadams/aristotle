@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Front-end to the curl program.
+
 	Usage
 	=====
 
@@ -66,9 +69,9 @@ if [ "$debug_level" -ge 1 ]; then
 	set -xv
 fi
 
-gc_token=$("$ari_gc_getcred" -k token) || gc_token=
-gc_username=$("$ari_gc_getcred" -k username) || gc_username=
-gc_password=$("$ari_gc_getcred" -k password) || gc_password=
+gc_token=$("$ari_gc_getcred" -k token 2> /dev/null) || gc_token=
+gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || gc_username=
+gc_password="$gc_token"
 
 if [ -z "$gc_token" -a \( -z "$gc_username" -o -z "$gc_password" \) ]; then
 	panic "cannot determine GitHub Classroom credentials"

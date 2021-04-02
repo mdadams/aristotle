@@ -32,6 +32,9 @@ usage()
 		echo "$@" 1>&2
 	fi
 	cat <<- EOF
+	$(basename $0)
+	Create a GitHub repository.
+
 	Usage
 	=====
 
@@ -55,7 +58,7 @@ usage()
 ari_gc_curl="$cmd_dir/ari_gc_curl"
 
 org_name=
-debug_level=0
+debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
 
 while getopts D:o:vq option; do
@@ -87,21 +90,27 @@ for repo_name in "${repo_names[@]}"; do
 		echo "Creating repository $repo_name"
 	fi
 
-	output=$("$ari_gc_curl" -D "$debug_level" -- \
+	buffer=$("$ari_gc_curl" -D "$debug_level" -- \
 	  -s -i \
 	  -d '{ "name": "'"$repo_name"'", "auto_init": false, "private": true }' \
 	  "https://api.github.com/orgs/$org_name/repos")
 	curl_status=$?
-	http_status=$(echo "$output" | egrep -e '^Status:' | awk '{print $2;}' -)
-	if [ "$verbose" -ge 2 ]; then
+	header_buffer=$(echo "$buffer" | curl_select header) || \
+	  panic "cannot get header"
+	json_buffer=$(echo "$buffer" | curl_select body) || \
+	  panic "cannot get body"
+	http_status=$(extract_http_status <<< "$buffer") || \
+	  panic "cannot get HTTP status"
+	if [ "$verbose" -ge 2 -o "$debug_level" -ge 1 ]; then
 		echo "curl status: $curl_status"
 		echo "HTTP status: $http_status"
 		echo "output:"
-		echo "$output"
+		echo "$buffer"
 	fi
 	if [[ $curl_status -ne 0 || $http_status != 2?? ]]; then
 		failures+=("$repo_name")
-		echo "ERROR: cannot create repository $repo_name"
+		eecho "ERROR: cannot create repository $repo_name ($curl_status $http_status)"
+		eecho "GITHUB ERROR: $(echo "$json_buffer" | jq .message)"
 		continue
 	fi
 
@@ -114,3 +123,4 @@ if [ "${#failures[@]}" -ne 0 ]; then
 	done
 	panic "one or more repositories could not be created"
 fi
+exit 0
