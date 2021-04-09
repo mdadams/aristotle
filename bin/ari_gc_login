@@ -56,7 +56,7 @@ usage()
 }
 
 user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
+#gc_login_file="$user_config_dir/gc_login"
 gc_username_file="$user_config_dir/gc_username"
 gc_token_file="$user_config_dir/gc_token"
 
@@ -85,20 +85,23 @@ if [ "$debug_level" -ge 10 ]; then
 	set -xv
 fi
 
-if [ -z "$token_file" ]; then
-	usage "no token file specified"
-fi
+#if [ -z "$token_file" ]; then
+#	usage "no token file specified"
+#fi
 
-if [ -f "$gc_login_file" ]; then
-	panic "already logged in"
-fi
+#if [ -f "$gc_login_file" ]; then
+#	panic "already logged in"
+#fi
 
-if [ "$token_file" = "-" ]; then
-	gc_token="$(cat)" || \
-	  panic "cannot get token"
+if [ -n "$token_file" ]; then
+	if [ "$token_file" = "-" ]; then
+		gc_token="$(cat)" || \
+		  panic "cannot get token"
+	else
+		gc_token="$(cat "$token_file")" || \
+		  panic "cannot get token"
 else
-	gc_token="$(cat "$token_file")" || \
-	  panic "cannot get token"
+	gc_token=
 fi
 
 umask 077
@@ -115,14 +118,16 @@ for file in "$gc_username_file" "$gc_token_file"; do
 	fi
 done
 
-if [ -n "$gc_username" ]; then
+if [ -n "$gc_user" ]; then
 	cat >"$gc_username_file" <<< "$gc_user" || \
 	  panic "cannot create gc_username file"
 fi
-cat > "$gc_token_file" <<< "$gc_token" || \
-  panic "cannot create gc_token file"
-# This following is just a failsafe (in case the umask is set wrong.
-chmod g-rwx,o-rwx "$gc_token_file" || \
-  panic "cannot set permissions for file $gc_token_file"
+if [ -n "$gc_token" ]; then
+	cat > "$gc_token_file" <<< "$gc_token" || \
+	  panic "cannot create gc_token file"
+	# This following is just a failsafe (in case the umask is set wrong.
+	chmod g-rwx,o-rwx "$gc_token_file" || \
+	  panic "cannot set permissions for file $gc_token_file"
+fi
 
-cat > "$gc_login_file" <<< "logged in"
+#cat > "$gc_login_file" <<< "logged in"

@@ -103,6 +103,7 @@ cmd_dir=$(dirname "$0") || panic "cannot get program directory"
 cmd_dir=$(realpath "$cmd_dir") || panic "cannot get real path of program"
 ari_hub="$cmd_dir/ari_hub"
 ari_info="$cmd_dir/ari_info"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 organization=
@@ -115,8 +116,9 @@ reproducible=0
 verbose=0
 inter_item_sleep=10
 inter_iter_sleep=60
+git_proto=https
 
-while getopts D:r:p:o:d:nRv option; do
+while getopts D:r:p:o:d:nRvg: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -134,6 +136,8 @@ while getopts D:r:p:o:d:nRv option; do
 		reproducible=1;;
 	v)
 		verbose=$((verbose + 1));;
+	g)
+		git_proto="$OPTARG";;
 	*)
 		usage "invalid option $option";;
 	esac
@@ -152,6 +156,12 @@ fi
 if [ -z "$package_regex" ]; then
 	usage "no packages specified"
 fi
+case "$git_proto" in
+https|http|ssh)
+	;;
+*)
+	usage "invalid Git protocol"
+esac
 
 work_dir=$(realpath "$work_dir") || \
   panic "cannot get real path of workspace directory"
@@ -192,8 +202,19 @@ while true; do
 
 		skip=0
 
-		repo_url="ssh://git@github.com/$organization/$repo_name.git"
-		#repo_url="https://github.com/$organization/$repo_name.git"
+		case "$git_proto" in
+		http|https)
+			gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
+			  panic "cannot get GitHub username"
+			repo_url="https://$gc_username@github.com/$organization/$repo_name.git"
+			;;
+		ssh)
+			repo_url="ssh://git@github.com/$organization/$repo_name.git"
+			;;
+		*)
+			panic "unexpected Git protocol";;
+		esac
+
 		item_dir="$work_dir/$repo_name"
 		old_commit_id_file="$item_dir/commit_id"
 		old_issue_file="$item_dir/issue"

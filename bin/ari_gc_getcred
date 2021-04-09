@@ -31,31 +31,43 @@ gc_username_file="$user_config_dir/gc_username"
 gc_token_file="$user_config_dir/gc_token"
 gh_token_file="$user_config_dir/gh_token"
 
+secret_tool=$(type -P secret-tool) || secret_tool=
+
 get_token()
 {
 	if [ -n "$ARI_GH_TOKEN" ]; then
-		echo "$ARI_GH_TOKEN" || panic "echo failed"
+		echo "$ARI_GH_TOKEN" || return 1
 	elif [ -n "$GITHUB_TOKEN" ]; then
-		echo "$GITHUB_TOKEN" || panic "echo failed"
+		echo "$GITHUB_TOKEN" || return 1
 	elif [ -n "$GH_TOKEN" ]; then
-		echo "$GH_TOKEN" || panic "echo failed"
-	elif [ -f "$gc_token_file" ]; then
-		cat "$gc_token_file" || panic "cat failed"
-	elif [ -f "$gh_token_file" ]; then
-		cat "$gh_token_file" || panic "cat failed"
+		echo "$GH_TOKEN" || return 1
 	else
-		panic "cannot determine GitHub personal authentication token (PAT)"
+		password=
+		if [ -z "$password" -a -n "$secret_tool" ]; then
+			username="$(get_username)" || username=
+			if [ -n "$username" ]; then
+				password="$("$secret_tool" lookup user "$username" \
+				  server github.com protocol https)" || password=
+			fi
+		fi
+		if [ -z "$password" -a -f "$gh_token_file" ]; then
+			password="$(cat "$gh_token_file")" || password=
+		fi
+		if [ -z "$password" ]; then
+			return 1
+		fi
+		echo "$password" || return 1
 	fi
 }
 
 get_username()
 {
 	if [ -n "$ARI_GH_USER" ]; then
-		echo "$ARI_GH_USER" || panic "echo failed"
+		echo "$ARI_GH_USER" || return 1
 	elif [ -f "$gc_username_file" ]; then
-		cat "$gc_username_file" || panic "cat failed"
+		cat "$gc_username_file" || return 1
 	else
-		echo "aristotle" || panic "echo failed"
+		echo "aristotle" || return 1
 	fi
 }
 

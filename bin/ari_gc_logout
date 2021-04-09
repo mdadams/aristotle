@@ -50,7 +50,7 @@ usage()
 }
 
 user_config_dir="$HOME/.aristotle"
-gc_login_file="$user_config_dir/gc_login"
+#gc_login_file="$user_config_dir/gc_login"
 gc_username_file="$user_config_dir/gc_username"
 gc_token_file="$user_config_dir/gc_token"
 
@@ -70,11 +70,12 @@ if [ "$debug_level" -ge 10 ]; then
 	set -xv
 fi
 
-if [ ! -f "$gc_login_file" ]; then
-	panic "not logged in"
-fi
+#if [ ! -f "$gc_login_file" ]; then
+#	panic "not logged in"
+#fi
 
-for file in "$gc_login_file" "$gc_username_file" "$gc_token_file"; do
+#for file in "$gc_login_file" "$gc_username_file" "$gc_token_file"; do
+for file in "$gc_username_file" "$gc_token_file"; do
 	if [ -f "$file" ]; then
 		rm "$file" || echo "cannot remove file $file"
 	fi
