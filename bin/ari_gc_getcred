@@ -127,9 +127,9 @@ for key in "${keys[@]}"; do
 
 	case "$key" in
 	username)
-		get_username;;
+		get_username || panic "unable to obtain username";;
 	token|password)
-		get_token;;
+		get_token || panic "unable to obtain token";;
 	*)
 		;;
 	esac
