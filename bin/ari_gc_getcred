@@ -26,16 +26,22 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
+ari_git_cred_lookup="$cmd_dir/ari_git_cred_lookup"
+
 user_config_dir="$HOME/.aristotle"
 gc_username_file="$user_config_dir/gc_username"
 gc_token_file="$user_config_dir/gc_token"
 gh_token_file="$user_config_dir/gh_token"
+gc_hostname_file="$user_config_dir/gh_hostname"
+gc_git_proto_file="$user_config_dir/gc_git_proto"
 
 secret_tool=$(type -P secret-tool) || secret_tool=
 
 get_token()
 {
-	if [ -n "$ARI_GH_TOKEN" ]; then
+	if [ -n "$ARI_GC_TOKEN" ]; then
+		echo "$ARI_GC_TOKEN" || return 1
+	elif [ -n "$ARI_GH_TOKEN" ]; then
 		echo "$ARI_GH_TOKEN" || return 1
 	elif [ -n "$GITHUB_TOKEN" ]; then
 		echo "$GITHUB_TOKEN" || return 1
@@ -44,17 +50,47 @@ get_token()
 	else
 		password=
 		if [ -z "$password" -a -n "$secret_tool" ]; then
+			git_proto=$(get_gc_git_proto) || git_proto=
 			username="$(get_username)" || username=
-			if [ -n "$username" ]; then
+			if [ -n "$git_proto" -a -n "$username" ]; then
+				if [ "$debug_level" -ge 1 ]; then
+					eecho "trying secret-tool"
+				fi
 				password="$("$secret_tool" lookup user "$username" \
-				  server github.com protocol https)" || password=
+				  server github.com protocol "$git_proto")" || password=
 			fi
-		fi
-		if [ -z "$password" -a -f "$gh_token_file" ]; then
-			password="$(cat "$gh_token_file")" || password=
+			password_source="secret-tool"
 		fi
 		if [ -z "$password" ]; then
+			git_proto="$(get_gc_git_proto)" || git_proto=
+			hostname="$(get_hostname)" || hostname=
+			username="$(get_username)" || username=
+			if [ "$debug_level" -ge 1 ]; then
+				eecho "protocol $git_proto host $hostname user $username"
+			fi
+			if [ -n "$git_proto" -a -n "$hostname" -a -n "$username" ]; then
+				if [ "$debug_level" -ge 1 ]; then
+					eecho "trying git credential"
+				fi
+				password=$("$ari_git_cred_lookup" \
+				  -p "$git_proto" -h "$hostname" -u "$username") || \
+				  password=
+			fi
+			password_source="git credential"
+		fi
+		if [ -z "$password" -a -f "$gh_token_file" ]; then
+			if [ "$debug_level" -ge 1 ]; then
+				eecho "trying file"
+			fi
+			password="$(cat "$gh_token_file")" || password=
+			password_source="file"
+		fi
+		if [ -z "$password" ]; then
+			eecho "cannot obtain GitHub token"
 			return 1
+		fi
+		if [ "$debug_level" -ge 1 ]; then
+			eecho "password source: $password_source"
 		fi
 		echo "$password" || return 1
 	fi
@@ -62,12 +98,40 @@ get_token()
 
 get_username()
 {
-	if [ -n "$ARI_GH_USER" ]; then
+	if [ -n "$ARI_GC_USER" ]; then
+		echo "$ARI_GC_USER" || return 1
+	elif [ -n "$ARI_GH_USER" ]; then
 		echo "$ARI_GH_USER" || return 1
 	elif [ -f "$gc_username_file" ]; then
 		cat "$gc_username_file" || return 1
 	else
-		echo "aristotle" || return 1
+		echo "" || return 1
+	fi
+}
+
+get_hostname()
+{
+	if [ -n "$ARI_GC_HOST" ]; then
+		echo "$ARI_GC_HOST" || return 1
+	elif [ -n "$ARI_GH_HOST" ]; then
+		echo "$ARI_GH_HOST" || return 1
+	elif [ -f "$gc_hostname_file" ]; then
+		cat "$gc_hostname_file" || return 1
+	else
+		echo "github.com" || return 1
+	fi
+}
+
+get_gc_git_proto()
+{
+	if [ -n "$ARI_GC_GIT_PROTO" ]; then
+		echo "$ARI_GC_GIT_PROTO" || return 1
+	elif [ -n "$ARI_GH_GIT_PROTO" ]; then
+		echo "$ARI_GH_GIT_PROTO" || return 1
+	elif [ -f "$gc_git_proto_file" ]; then
+		cat "$gc_git_proto_file" || { eecho "cat failed"; return 1; }
+	else
+		echo "https" || return 1
 	fi
 }
 
@@ -119,19 +183,27 @@ if [ $# -gt 0 ]; then
 	usage "invalid paramter"
 fi
 
-if [ "$debug_level" -ge 1 ]; then
+if [ "$debug_level" -ge 10 ]; then
 	set -xv
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	eecho "secret-tool program: $secret_tool"
 fi
 
 for key in "${keys[@]}"; do
 
 	case "$key" in
+	hostname)
+		get_hostname || panic "unable to obtain hostname";;
 	username)
 		get_username || panic "unable to obtain username";;
 	token|password)
 		get_token || panic "unable to obtain token";;
+	gc_git_protocol)
+		get_gc_git_proto || panic "unable to obtain Git protocol";;
 	*)
-		;;
+		panic "invalid key $key";;
 	esac
 
 done

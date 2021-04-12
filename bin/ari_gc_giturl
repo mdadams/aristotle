@@ -1,0 +1,108 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2021 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+
+usage()
+{
+	echo "$@"
+	exit 2
+}
+
+user_config_dir="$HOME/.aristotle"
+gc_git_proto_file="$user_config_dir/gc_git_proto"
+
+debug_level=0
+git_proto=
+host_name=
+org_name=
+repo_name=
+user_name=
+
+op=make_url
+
+while getopts p:h:o:r:u:D: option; do
+	case "$option" in
+	p)
+		git_proto="$OPTARG";;
+	h)
+		host_name="$OPTARG";;
+	o)
+		org_name="$OPTARG";;
+	r)
+		repo_name="$OPTARG";;
+	u)
+		user_name="$OPTARG";;
+	D)
+		debug_level="$OPTARG";;
+	*)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$git_proto" ]; then
+	usage "no Git protocol specified"
+fi
+if [ -z "$repo_name" ]; then
+	usage "no GitHub repository name specified"
+fi
+if [ -z "$org_name" ]; then
+	usage "no GitHub organization name specified"
+fi
+
+case "$git_proto" in
+	http|https)
+		if [ -z "$user_name" ]; then
+			user_name=$("$ari_gc_getcred" -D "$debug_level" -k username \
+			  2> /dev/null) || \
+			  panic "cannot get GitHub username"
+		fi
+		if [ -n "$user_name" ]; then
+			repo_url="https://$user_name@github.com/$org_name/$repo_name.git"
+		else
+			repo_url="https://github.com/$org_name/$repo_name.git"
+		fi
+		;;
+	ssh)
+		if [ -z "$host_name" ]; then
+			host_name=$("$ari_gc_getcred" -D "$debug_level" -k hostname \
+			  2> /dev/null) || \
+			  panic "cannot get GitHub hostname"
+		fi
+		if [ -n "$host_name" ]; then
+			repo_url="ssh://git@$host_name/$org_name/$repo_name.git"
+		else
+			repo_url="ssh://git@github.com/$org_name/$repo_name.git"
+		fi
+		;;
+	*)
+		panic "unexpected Git protocol";;
+esac
+
+echo "$repo_url" || panic

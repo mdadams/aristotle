@@ -31,6 +31,14 @@ perror()
 	echo "ERROR: $@"
 }
 
+perform_cleanup()
+{
+	if [ -n "$tmp_dir" -a -d "$tmp_dir" ]; then
+		rm -rf "$tmp_dir" || \
+		  echo "warning: cannot remove temporary directory $tmp_dir"
+	fi
+}
+
 usage()
 {
 	if [ $# -gt 0 ]; then
@@ -71,8 +79,7 @@ usage()
 }
 
 user_name=$(whoami) || panic "cannot determine user"
-host_name=$(hostname) || panic "cannot determine hostname"
-tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_git_copyrepo-${user_name}@${host_name}-$$-XXXXXXXX"
+tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_git_copyrepo-${user_name}-XXXXXXXX"
 
 ari_mktemp="$cmd_dir/ari_mktemp"
 
@@ -120,55 +127,34 @@ else
 	discard_stdout_stderr=stdout_stderr
 fi
 
-command_status=0
+tmp_dir=
 
-while true; do
-
-	if [ "$remote_target" -ne 0 ]; then
-		tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template")
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot make temporary directory"
-			break
-		fi
-		bare_dir="$tmp_dir"
-	else
-		bare_dir="$target_repo"
+if [ "$remote_target" -ne 0 ]; then
+	tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+	  panic "cannot make temporary directory"
+	if [ "$cleanup" -ne 0 ]; then
+		trap perform_cleanup EXIT
 	fi
-
-	if [ "$verbose" -ge 2 ]; then
-		echo "Running git clone --bare $source_repo $bare_dir"
-	fi
-	conditionally_discard_output "$discard_stdout_stderr" \
-	  git clone --bare "$source_repo" "$bare_dir"
-	if [ $? -ne 0 ]; then
-		command_status=1
-		perror "cannot clone repository $source_repo"
-		break
-	fi
-
-	if [ "$remote_target" -ne 0 ]; then
-		if [ "$verbose" -ge 2 ]; then
-			echo "Running git push --mirror $target_repo"
-		fi
-		(chdir "$bare_dir" && \
-		  conditionally_discard_output "$discard_stdout_stderr" \
-		  git push --mirror "$target_repo")
-		if [ $? -ne 0 ]; then
-			command_status=1
-			perror "cannot push to target repository $target_repo"
-			break
-		fi
-	fi
-
-	break
-
-done
-
-if [ "$remote_target" -ne 0 -a "$cleanup" -ne 0 ]; then
-	if [ -d "$tmp_dir" ]; then
-		rm -rf "$tmp_dir"
-	fi
+	bare_dir="$tmp_dir"
+else
+	bare_dir="$target_repo"
 fi
 
-exit "$command_status"
+if [ "$verbose" -ge 2 ]; then
+	echo "Running git clone --bare $source_repo $bare_dir"
+fi
+conditionally_discard_output "$discard_stdout_stderr" \
+  git clone --bare "$source_repo" "$bare_dir" || \
+  panic "cannot clone repository $source_repo"
+
+if [ "$remote_target" -ne 0 ]; then
+	if [ "$verbose" -ge 2 ]; then
+		echo "Running git push --mirror $target_repo"
+	fi
+	(chdir "$bare_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git push --mirror "$target_repo") || \
+		panic "cannot push to target repository $target_repo"
+fi
+
+exit

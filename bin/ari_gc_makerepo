@@ -80,12 +80,13 @@ ari_gc_createrepo="$cmd_dir/ari_gc_createrepo"
 ari_gc_deleterepo="$cmd_dir/ari_gc_deleterepo"
 ari_git_makerepo="$cmd_dir/ari_git_makerepo"
 ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
 
 verbose=0
 org_name=
 debug_level=0
 input_type=
-git_proto=ssh
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
 repo=
 
 while getopts D:o:vqt:g:n: option; do
@@ -146,7 +147,12 @@ for input in "${inputs[@]}"; do
 
 	if [ -z "$input_type" ]; then
 		if [ -d "$input" ]; then
-			input_type=dir
+			if [ -d "$input/branches" -a -d "$input/objects" -a \
+			  -d "$input/tags" ]; then
+				input_type=bare_git_dir
+			else
+				input_type=dir
+			fi
 		fi
 		case "$input" in
 		*.zip)
@@ -167,20 +173,25 @@ for input in "${inputs[@]}"; do
 		continue
 	fi
 
-	extension=
-	if [ "$input_type" != dir ]; then
+	case "$input_type" in
+	bare_git_dir)
+		extension=git
+		;;
+	tgz)
 		case "$input" in
-		*.zip)
-			extension=zip
-			;;
 		*.tgz)
-			extension=tgz
-			;;
+			extension=tgz;;
 		*.tar.gz)
-			extension=tar.gz
-			;;
+			extension=tar.gz;;
 		esac
-	fi
+		;;
+	zip)
+		extension=zip
+		;;
+	dir|*)
+		extension=
+		;;
+	esac
 
 	args=()
 	if [ -n "$extension" ]; then
@@ -196,22 +207,8 @@ for input in "${inputs[@]}"; do
 		repo_name="$repo"
 	fi
 
-	case "$git_proto" in
-	ssh)
-		clone_url="ssh://git@github.com/$org_name/$repo_name.git"
-		;;
-	http|https)
-		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
-		  gc_username=
-		if [ -n "$gc_username" ]; then
-			clone_url="https://$gc_username@github.com/$org_name/$repo_name.git"
-		else
-			clone_url=
-		fi
-		;;
-	*)
-		panic "unexpected Git protocol";;
-	esac
+	clone_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
+	  -r "$repo_name")" || clone_url=
 	if [ -z "$clone_url" ]; then
 		perror "cannot get clone URL"
 		continue

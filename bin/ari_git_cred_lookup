@@ -1,0 +1,123 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2021 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+
+panic()
+{
+	echo "ERROR: $@" 1>&2
+	exit 1
+}
+
+join_by()
+{
+	local IFS="$1"
+	shift
+	echo "$*"
+}
+
+debug_level="${ARI_DEBUG_LEVEL:-0}"
+
+proto=
+host_name=
+user_name=
+
+while getopts D:p:h:u: option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	p)
+		proto="$OPTARG";;
+	h)
+		host_name="$OPTARG";;
+	u)
+		user_name="$OPTARG";;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$proto" ]; then
+	proto="$("$ari_gc_getcred" -k gc_git_protocol)" || proto=
+fi
+if [ -z "$host_name" ]; then
+	host_name="$("$ari_gc_getcred" -k hostname)" || host_name=
+fi
+if [ -z "$user_name" ]; then
+	user_name="$("$ari_gc_getcred" -k username)" || user_name=
+fi
+
+if [ -z "$proto" ]; then
+	usage "no protocol specified"
+fi
+if [ -z "$host_name" ]; then
+	usage "no hostname specified"
+fi
+if [ -z "$user_name" ]; then
+	usage "no username specified"
+fi
+
+pairs=()
+
+if [ -n "$proto" ]; then
+	pairs+=("protocol=$proto")
+fi
+if [ -n "$host_name" ]; then
+	pairs+=("host=$host_name")
+fi
+if [ -n "$user_name" ]; then
+	pairs+=("username=$user_name")
+fi
+#pairs+=("path=")
+
+query="$(join_by $'\n' "${pairs[@]}")" || \
+  panic "string processing failed"
+
+#eecho "$query"
+
+# setsid with the --wait option would be much better but not all systems
+# have this option
+if [ 1 -ne 0 ]; then
+	buffer="$(setsid git credential fill <<< "$query" 2> /dev/null)" || \
+	  panic "setsid failed"
+	wait $!
+	status=$?
+	if [ "$status" -ne 0 ]; then
+		panic "credentials not found"
+	fi
+else
+	buffer="$(setsid --wait git credential fill <<< "$query" 2> /dev/null)" || \
+	  panic "setsid failed"
+fi
+
+buffer="$(grep -e '^password=' <<< "$buffer")" || \
+  panic "grep failed"
+buffer="$(sed 's/^password=//' <<< "$buffer")" || \
+  panic "sed failed"
+echo "$buffer"

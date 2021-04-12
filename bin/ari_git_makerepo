@@ -48,6 +48,25 @@ usage()
 	$(basename $0)
 	This program replaces the contents of a Git repository with some specific
 	content, which is provided in a directory or archive file.
+	It is strongly recommended that the target repository be empty in order to
+	minimize the chance of failure.
+
+	Remarks Concerning GitHub
+	=========================
+
+	When a commit is made to an empty repository, GitHub must set the default
+	branch.  If the initial commit contains multiple branches, GitHub appears
+	to choose the branch whose name comes first in alphabetical order as the
+	default branch.  This choice, in many cases, will not be master or main or
+	many of the popular names for the primary branch in a repository.  So, the
+	default branch may need to be set for the target repository (using the
+	interfaces provided by GitHub) after being created.
+
+	If the target repository is hosted by GitHub, it should be empty.
+	The operation may still succeed if the target repository is not empty.
+	Problems will arise, however, if the GitHub's setting for the default
+	branch is not one of the branches in the source repository.  GitHub
+	will refuse to delete the branch that it considers the default branch.
 
 	Usage
 	=====
@@ -85,7 +104,14 @@ while getopts CD:t:v option; do
 	D)
 		debug_level="$OPTARG";;
 	t)
-		input_type="$OPTARG";;
+		input_type="$OPTARG"
+		case "$input_type" in
+		zip|tar|tgz|bare_git_dir)
+			;;
+		*)
+			usage;;
+		esac
+		;;
 	v)
 		verbose=$((verbose + 1));;
 	C)
@@ -117,20 +143,20 @@ else
 	discard_stdout_stderr=stdout_stderr
 fi
 
-tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
-  panic "cannot make temporary directory"
-if [ "$cleanup" -ne 0 ]; then
-	trap perform_cleanup EXIT
-fi
-
-if [ "$debug_level" -ge 1 ]; then
-	echo "temporary directory: $tmp_dir"
-fi
+#if [ "$input_type" = bare_git_dir ]; then
+#	"$ari_git_copyrepo" -r "$input" "$repo_url" || panic
+#	exit
+#fi
 
 # Determine the input type, if necessary.
 if [ -z "$input_type" ]; then
 	if [ -d "$input" ]; then
-		input_type=dir
+		if [ -d "$input/branches" -a -d "$input/objects" -a \
+		  -d "$input/refs" ]; then
+			input_type=bare_git_dir
+		else
+			input_type=dir
+		fi
 	fi
 	case "$input_type" in
 	*.zip)
@@ -143,63 +169,87 @@ if [ -z "$input_type" ]; then
 	fi
 fi
 
-bare_dir="$tmp_dir/repo.git"
-normal_dir="$tmp_dir/repo"
-
-for dir in "$bare_dir" "$normal_dir"; do
-	mkdir -p "$dir" || \
-	  panic "cannot make directory $dir"
-done
-
-if [ "$verbose" -ge 2 ]; then
-	echo "Building temporary repository $bare_dir"
+if [ "$debug_level" -ge 1 ]; then
+	echo "input type: $input_type"
 fi
-(chdir "$bare_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git init --bare .) || \
-  panic "cannot create bare repository"
-(chdir "$normal_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git clone "$bare_dir" .) || \
-  panic "cannot clone bare repository"
+
+tmp_dir=$("$ari_mktemp" -d "$tmp_dir_template") || \
+  panic "cannot make temporary directory"
+if [ "$cleanup" -ne 0 ]; then
+	trap perform_cleanup EXIT
+fi
+
+if [ "$debug_level" -ge 1 ]; then
+	echo "temporary directory: $tmp_dir"
+fi
 
 case "$input_type" in
-dir)
-	if [ "$verbose" -ge 2 ]; then
-		ls -alR "$input"
-	fi
-	tar -C "$input" -cf - . | tar -C "$normal_dir" -xf - || \
-	  panic "cannot copy files"
-	;;
-zip)
-	unzip -q -d "$normal_dir" "$input" || \
-	  panic "cannot extract files from zip archive"
-	;;
-tgz)
-	tar -x -z -f "$input" -C "$normal_dir" || \
-	  panic "cannot extract files from tar archive"
-	;;
-*)
-	panic "unknown input type"
-	;;
-esac
 
-(chdir "$normal_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git add .) || \
-  panic "cannot add files to repository"
-(chdir "$normal_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git commit -m "Initial commit") || \
-  panic "cannot commit changes"
-(chdir "$normal_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git config --local push.default simple) || \
-  panic "cannot set push.default"
-(chdir "$normal_dir" && \
-  conditionally_discard_output "$discard_stdout_stderr" \
-  git push) || \
-  panic "cannot push changes"
+bare_git_dir)
+	bare_dir="$input"
+	;;
+
+*)
+	bare_dir="$tmp_dir/repo.git"
+	normal_dir="$tmp_dir/repo"
+
+	for dir in "$bare_dir" "$normal_dir"; do
+		mkdir -p "$dir" || \
+		  panic "cannot make directory $dir"
+	done
+
+	if [ "$verbose" -ge 2 ]; then
+		echo "Building temporary repository $bare_dir"
+	fi
+	(chdir "$bare_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git init --bare .) || \
+	  panic "cannot create bare repository"
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git clone "$bare_dir" .) || \
+	  panic "cannot clone bare repository"
+
+	case "$input_type" in
+	dir)
+		if [ "$verbose" -ge 2 ]; then
+			ls -alR "$input"
+		fi
+		tar -C "$input" -cf - . | tar -C "$normal_dir" -xf - || \
+		  panic "cannot copy files"
+		;;
+	zip)
+		unzip -q -d "$normal_dir" "$input" || \
+		  panic "cannot extract files from zip archive"
+		;;
+	tgz)
+		tar -x -z -f "$input" -C "$normal_dir" || \
+		  panic "cannot extract files from tar archive"
+		;;
+	*)
+		panic "unknown input type"
+		;;
+	esac
+
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git add .) || \
+	  panic "cannot add files to repository"
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git commit -m "Initial commit") || \
+	  panic "cannot commit changes"
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git config --local push.default simple) || \
+	  panic "cannot set push.default"
+	(chdir "$normal_dir" && \
+	  conditionally_discard_output "$discard_stdout_stderr" \
+	  git push) || \
+	  panic "cannot push changes"
+	;;
+
+esac
 
 if [ "$verbose" -ge 2 ]; then
 	echo "Copying temporary repository to target repository $repo_url"

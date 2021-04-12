@@ -79,6 +79,7 @@ ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_tagremote="$cmd_dir/ari_git_tagremote"
 ari_gpg="$abs_cmd_dir/ari_gpg"
 ari_gc_getcred="$abs_cmd_dir/ari_gc_getcred"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
 
 target_time=
 org_name=
@@ -90,13 +91,11 @@ signing_key=
 debug_level=0
 verbose=0
 all_assignments=0
-#delay=1
-delay=0
-check_ssh_key=1
+delay=1
 rev_time=
-git_proto=ssh
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
 
-while getopts ZAD:o:w:W:b:a:t:dck:vqT:g: option; do
+while getopts AD:o:w:W:b:a:t:dck:vqT:g: option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -126,8 +125,6 @@ while getopts ZAD:o:w:W:b:a:t:dck:vqT:g: option; do
 		verbose=$((verbose - 1));;
 	A)
 		all_assignments=1;;
-	Z)
-		check_ssh_key=0;;
 	g)
 		case "$OPTARG" in
 		http|https|ssh)
@@ -162,10 +159,6 @@ if [ -z "$tag" ]; then
 fi
 if [ "$operation" == add -a -z "$signing_key" ]; then
 	usage "no signing key specified"
-fi
-
-if [ "$check_ssh_key" -ne 0 ]; then
-	check_for_ssh_key || panic "no ssh key is available"
 fi
 
 if [ "$debug_level" -ge 10 ]; then
@@ -205,22 +198,8 @@ for repo_name in "${repos[@]}"; do
 		echo "Processing $repo_name"
 	fi
 
-	case "$git_proto" in
-	ssh)
-		clone_url="ssh://git@github.com/$org_name/$repo_name.git"
-		;;
-	http|https)
-		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
-		  gc_username=
-		if [ -n "$gc_username" ]; then
-			clone_url="https://$gc_username@github.com/$org_name/$repo_name.git"
-		else
-			clone_url=
-		fi
-		;;
-	*)
-		panic "unexpected Git protocol";;
-	esac
+	clone_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
+	  -r "$repo_name")" || clone_url=
 	if [ -z "$clone_url" ]; then
 		echo "ERROR: cannot get clone URL"
 		continue

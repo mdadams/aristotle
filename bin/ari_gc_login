@@ -56,7 +56,6 @@ usage()
 }
 
 user_config_dir="$HOME/.aristotle"
-#gc_login_file="$user_config_dir/gc_login"
 gc_username_file="$user_config_dir/gc_username"
 gc_token_file="$user_config_dir/gc_token"
 
@@ -87,10 +86,6 @@ fi
 
 #if [ -z "$token_file" ]; then
 #	usage "no token file specified"
-#fi
-
-#if [ -f "$gc_login_file" ]; then
-#	panic "already logged in"
 #fi
 
 if [ -n "$token_file" ]; then
@@ -129,5 +124,3 @@ if [ -n "$gc_token" ]; then
 	chmod g-rwx,o-rwx "$gc_token_file" || \
 	  panic "cannot set permissions for file $gc_token_file"
 fi
-
-#cat > "$gc_login_file" <<< "logged in"

@@ -69,6 +69,8 @@ usage()
 
 ari_gc_lsrepo="$cmd_dir/ari_gc_lsrepo"
 ari_git_makerelease="$cmd_dir/ari_git_makerelease"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 org_name=
 assignment=
@@ -78,10 +80,9 @@ out_type=dir
 verbose=0
 verify_sig=0
 branch=
-git_proto=ssh
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
 
-#delay=1
-delay=0
+delay=1
 
 while getopts D:o:p:a:t:vqcb:g:w: option; do
 	case "$option" in
@@ -162,18 +163,8 @@ for repo_name in "${repo_names[@]}"; do
 		echo "Processing $repo_name"
 	fi
 
-	case "$git_proto" in
-	ssh)
-		repo_url="ssh://git@github.com/$org_name/$repo_name.git"
-		;;
-	http|https)
-		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
-		  gc_username=
-		repo_url="https://$gc_username@github.com/$org_name/$repo_name.git"
-		;;
-	*)
-		panic "unexpected Git protocol";;
-	esac
+	repo_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
+	  -r "$repo_name")" || panic "cannot get repository URL"
 
 	basename="$repo_name"
 

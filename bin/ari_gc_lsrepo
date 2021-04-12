@@ -43,35 +43,38 @@ usage()
 	Options
 	=======
 
-	-D debug_level
-	    Set the debug level to debug_level.
-	-o org_name
-	    Set the organization to org_name.
-	-a assignment
-	    Set the assignment to assignment.
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+	-o \$org_name
+	    Set the organization to \$org_name.
+	-a \$assignment
+	    Set the assignment to \$assignment.
 	-v
 	    Increase the verbosity level of output.
-	-f format
-	    Set the output format to format.
-	    Allowed values: name, ssh, http
+	-f \$format
+	    Set the format for Git URLs to \$format.
+	    Allowed values: https and ssh
+	-u
+	    Print Git URL associated with repository instead of its name.
 	EOF
 	exit 2
 }
 
 ari_gc_curl="$cmd_dir/ari_gc_curl"
 ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
 
 newline="
 "
 
-format=name
 org_names=()
 assignments=
 debug_level=${ARI_DEBUG_LEVEL:-0}
 verbose=0
-user_in_url=0
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
+use_url=0
 
-while getopts D:a:o:vf:u option; do
+while getopts D:a:o:vg:u option; do
 	case "$option" in
 	D)
 		debug_level="$OPTARG";;
@@ -81,10 +84,10 @@ while getopts D:a:o:vf:u option; do
 		assignment="$OPTARG";;
 	v)
 		verbose=$((verbose + 1));;
-	f)
-		format="$OPTARG";;
+	g)
+		git_proto="$OPTARG";;
 	u)
-		user_in_url=1;;
+		use_url=1;;
 	\?)
 		usage "invalid option $option";;
 	esac
@@ -168,29 +171,14 @@ for org_name in "${org_names[@]}"; do
 		fi
 	done
 
-	if [ "$user_in_url" -ne 0 ]; then
-		gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
-		  panic "cannot get username"
-	fi
 	for repo in "${selected_repos[@]}"; do
-		case "$format" in
-		name)
-			echo "$repo";;
-		ssh|ssh_clone_url)
-			if [ "$user_in_url" -ne 0 ]; then
-				echo "git@$gc_username.github.com:$org_name/$repo.git"
-			else
-				echo "git@github.com:$org_name/$repo.git"
-			fi
-			;;
-		http|https|http_clone_url)
-			if [ "$user_in_url" -ne 0 ]; then
-				echo "https://$gc_username@github.com/$org_name/$repo.git"
-			else
-				echo "https://github.com/$org_name/$repo.git"
-			fi
-			;;
-		esac
+		if [ "$use_url" -ne 0 ]; then
+			repo_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
+			  -r "$repo")" || panic "cannot get repository URL"
+			echo "$repo_url"
+		else
+			echo "$repo"
+		fi
 	done
 
 done

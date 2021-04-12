@@ -258,6 +258,11 @@ while true; do
 		user_email=$(echo "$buffer" | sed 's/.*<\(.*\)>/\1/') || \
 		  panic "cannot extract email"
 
+		if [ "$debug_level" -ge 1 ]; then
+			eecho "Full Name: $user_fullname"
+			eecho "Email: $user_email"
+		fi
+
 		GIT_DIR="$git_dir/.git" \
 		  conditionally_discard_output "$discard_stdout_stderr" \
 		  git config user.email "$user_email"

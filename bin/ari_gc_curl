@@ -71,9 +71,8 @@ fi
 
 gc_token=$("$ari_gc_getcred" -k token 2> /dev/null) || gc_token=
 gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || gc_username=
-gc_password="$gc_token"
 
-if [ -z "$gc_token" -a \( -z "$gc_username" -o -z "$gc_password" \) ]; then
+if [ -z "$gc_token" -a -z "$gc_username" ]; then
 	panic "cannot determine GitHub Classroom credentials"
 fi
 
@@ -98,20 +97,12 @@ fi
 
 if [ "$debug_level" -ge 1 ]; then
 	eecho "username $gc_username"
-	eecho "password $gc_password"
 	eecho "token $gc_token"
 fi
 
-if [ -n "$gc_token" ]; then
-	# Note: Do not allow the token appear as a command-line argument.
-	if [ "$has_header_from_file" -ne 0 ]; then
-		curl -s -H @- <<< "Authorization: token $gc_token" "$@"
-	else
-		curl -K - -s <<< "-H \"Authorization: token $gc_token\"" "$@"
-	fi
-elif [ -n "$gc_username" -a -f "$gc_password_file" ]; then
-	# Note: Do not allow the password appear as a command-line argument.
-	curl -K - -s "$@" <<< 'user = "$gc_username:$gc_password"'
+# Note: Do not allow the token appear as a command-line argument.
+if [ "$has_header_from_file" -ne 0 ]; then
+	curl -s -H @- <<< "Authorization: token $gc_token" "$@"
 else
-	curl -u "$gc_username" -s "$@"
+	curl -K - -s <<< "-H \"Authorization: token $gc_token\"" "$@"
 fi

@@ -104,6 +104,7 @@ cmd_dir=$(realpath "$cmd_dir") || panic "cannot get real path of program"
 ari_hub="$cmd_dir/ari_hub"
 ari_info="$cmd_dir/ari_info"
 ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 organization=
@@ -116,7 +117,7 @@ reproducible=0
 verbose=0
 inter_item_sleep=10
 inter_iter_sleep=60
-git_proto=https
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
 
 while getopts D:r:p:o:d:nRvg: option; do
 	case "$option" in
@@ -202,18 +203,8 @@ while true; do
 
 		skip=0
 
-		case "$git_proto" in
-		http|https)
-			gc_username=$("$ari_gc_getcred" -k username 2> /dev/null) || \
-			  panic "cannot get GitHub username"
-			repo_url="https://$gc_username@github.com/$organization/$repo_name.git"
-			;;
-		ssh)
-			repo_url="ssh://git@github.com/$organization/$repo_name.git"
-			;;
-		*)
-			panic "unexpected Git protocol";;
-		esac
+		repo_url="$("$ari_gc_giturl" -p "$git_proto" -o "$organization" \
+		  -r "$repo_name")" || panic "cannot get repository URL"
 
 		item_dir="$work_dir/$repo_name"
 		old_commit_id_file="$item_dir/commit_id"
