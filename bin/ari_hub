@@ -30,6 +30,8 @@ ari_gc_getcred="$cmd_dir/ari_gc_getcred"
 
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 
+github_host_name=github.com
+
 hub_program=hub
 
 if [ "$debug_level" -ge 10 ]; then
@@ -58,5 +60,24 @@ if [ "$debug_level" -ge 1 ]; then
 fi
 
 export HUB_PROTOCOL="$gc_git_proto"
-export GITHUB_HOST="$gc_host"
+# Note:
+# The hub program seems to require that the Git remote have the hostname
+# github.com, even if the ssh program would map some other name to
+# github.com.  Consequently, the following (commented out) line does not
+# seem to work:
+# export GITHUB_HOST="$gc_host"
+export GITHUB_HOST="$github_host_name"
+if [ "$gc_host" != "$github_host_name" ]; then
+	eecho "WARNING: hub only seems to support a GitHub hostname of $github_host_name"
+	eecho "WARNING: ignoring requested GitHub hostname $gc_host"
+	eecho "WARNING: instead using GitHub hostname $github_host_name"
+fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "GITHUB_VERBOSE=$GITHUB_VERBOSE"
+	eecho "HUB_PROTOCOL=$HUB_PROTOCOL"
+	eecho "GITHUB_HOST=$GITHUB_HOST"
+	eecho "GITHUB_USER=$GITHUB_USER"
+	eecho "GITHUB_TOKEN=$GITHUB_TOKEN"
+	eecho "Running: $hub_program $@"
+fi
 exec "$hub_program" "$@"
