@@ -81,22 +81,23 @@ usage()
 	Options
 	=======
 
-	-D debug_level
-	    Set the debug level to debug_level.
-	-f format
-	    Set the format for the next input file to format.
-	-i input_file
-	    Add the file input_file to the list of input files.
-	-o output_file
-	    Set the output file to output_file.
-	-t title
-	    Set the title for the next input file to title.
-	-u upness
-	    Set the upness (for printing) for the next input file to upness.
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+	-f \$format
+	    Set the format for the next input file to \$format.
+	    Valid values are: text, text-utf8, pdf
+	-i \$input_file
+	    Add the file \$input_file to the list of input files.
+	-o \$output_file
+	    Set the output file to \$output_file.
+	-t \$title
+	    Set the title for the next input file to \$title.
+	-u \$upness
+	    Set the upness (for printing) for the next input file to \$upness.
 	-v
 	    Increase the verbosity level of output.
-	-l numbering
-	    Set the line numbering for the next input file to numbering.
+	-l \$numbering
+	    Set the line numbering for the next input file to \$numbering.
 	-C
 	    Do not perform cleanup.
 	EOF
@@ -111,6 +112,7 @@ a2ps_program=$(type -P a2ps) || a2ps_program=
 ps2pdf_program=$(type -P ps2pdf) || ps2pdf_program=
 pdfjam_program=$(type -P pdfjam) || pdfjam_program=
 
+a2ps_base_opts=()
 #a2ps_base_opts+=(-M letter)
 a2ps_base_opts+=(-M Letterdj)
 a2ps_base_opts+=(-T4)
@@ -118,6 +120,11 @@ a2ps_base_opts+=(--header=)
 a2ps_base_opts+=(--footer=)
 a2ps_base_opts+=(--left-footer=)
 a2ps_base_opts+=(--right-footer=)
+
+ps2pdf_base_opts=()
+ps2pdf_base_opts+=(-sPAPERSIZE=letter)
+#ps2pdf_base_opts+=(-dDEVICEWIDTHPOINTS=612)
+#ps2pdf_base_opts+=(-dDEVICEHEIGHTPOINTS=792)
 
 cleanup=1
 format_tab=()
@@ -310,7 +317,8 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		cat "$file" | preprocess | \
 		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  "$ps2pdf_program" - - > "$tmp_pdf_file" || \
+		  "$ps2pdf_program" "${ps2pdf_base_opts[@]}" - - \
+		  > "$tmp_pdf_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	text)
@@ -328,7 +336,8 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		cat "$file" | \
 		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
-		  "$ps2pdf_program" - - > "$tmp_pdf_file" || \
+		  "$ps2pdf_program" "${ps2pdf_base_opts[@]}" - - \
+		  > "$tmp_pdf_file" || \
 		  panic "cannot convert to PDF format"
 		;;
 	pdf)

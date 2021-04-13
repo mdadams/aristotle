@@ -26,6 +26,8 @@
 cmd_dir=$(dirname "$0") || exit 1
 source "$cmd_dir/utilities" || exit 1
 
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+
 debug_level="${ARI_DEBUG_LEVEL:-0}"
 
 hub_program=hub
@@ -35,28 +37,26 @@ if [ "$debug_level" -ge 10 ]; then
 fi
 
 gc_user=$("$ari_gc_getcred" -k username) || gc_user=
-gc_password=$("$ari_gc_getcred" -k password) || gc_password=
 gc_token=$("$ari_gc_getcred" -k token) || gc_token=
 
-if [ -n "$gc_token" ]; then
-	auth_method="token"
-	export GITHUB_TOKEN="$gc_token"
-elif [ -n "$gc_user" -a -n "$gc_password" ]; then
-	auth_method="username and password"
+gc_git_proto=$("$ari_gc_getcred" -k gc_git_protocol) || \
+  panic "cannot get GitHub Git protocol"
+gc_host=$("$ari_gc_getcred" -k hostname) || \
+  panic "cannot get GitHub hostname"
+
+if [ -n "$gc_user" -a -n "$gc_token" ]; then
 	export GITHUB_USER="$gc_user"
-	export GITHUB_PASSWORD="$gc_password"
+	export GITHUB_TOKEN="$gc_token"
+elif [ -n "$gc_token" ]; then
+	export GITHUB_TOKEN="$gc_token"
 else
 	panic "no available authentication method"
-fi
-
-if [ "$debug_level" -ge 1 ]; then
-	eecho "Using $auth_method for authentication"
 fi
 
 if [ "$debug_level" -ge 1 ]; then
 	export HUB_VERBOSE=1
 fi
 
-export HUB_PROTOCOL=https
-export GITHUB_HOST=github.com
+export HUB_PROTOCOL="$gc_git_proto"
+export GITHUB_HOST="$gc_host"
 exec "$hub_program" "$@"
