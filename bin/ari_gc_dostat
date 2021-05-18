@@ -257,9 +257,14 @@ while true; do
 		fi
 
 		if [ "$skip" -eq 0 ]; then
+			(cd "$repo_dir" && git checkout -q "$branch")
+			if [ $? -ne 0 ]; then
+				eecho "warning: cannot checkout $branch"
+				skip=1
+			fi
+		fi
 
-			(cd "$repo_dir" && git checkout -q "$branch") || \
-			  panic "cannot checkout"
+		if [ "$skip" -eq 0 ]; then
 
 			# Get the commit ID that has been checked out.
 			commit_id=$( (cd "$repo_dir" && git rev-parse HEAD) ) || \
