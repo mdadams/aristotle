@@ -176,6 +176,12 @@ done
 
 first=1
 
+# states:
+# none: repository did not previously exist
+# empty: repository is empty
+# no_master: repository is not empty but has no master branch
+# master: repository has master branch
+
 iter_no=0
 while true; do
 
@@ -199,7 +205,9 @@ while true; do
 		done
 	fi
 
-	for repo_name in "${repo_names[@]}"; do
+	for repo_index in "${!repo_names[@]}"; do
+
+		repo_name="${repo_names[$repo_index]}"
 
 		skip=0
 
@@ -207,6 +215,7 @@ while true; do
 		  -r "$repo_name")" || panic "cannot get repository URL"
 
 		item_dir="$work_dir/$repo_name"
+		state_file="$item_dir/state"
 		old_commit_id_file="$item_dir/commit_id"
 		old_issue_file="$item_dir/issue"
 		old_workspace_dir="$item_dir/workspace"
@@ -219,11 +228,15 @@ while true; do
 		time="$(date +%Y-%m-%d-%H-%M-%S)" || panic "cannot get time"
 		issue_file="$issue_dir/issue-$time"
 		workspace_valid=0
+		make_issue=0
+		commit_id=
+		old_state=
+		state=
 
 		if [ "$verbose" -ge 1 ]; then
 			cat <<- EOF
 			############################################################
-			Processing $repo_name
+			Processing $repo_name ($((repo_index + 1))/${#repo_names[@]})
 			############################################################
 			EOF
 		fi
@@ -246,21 +259,67 @@ while true; do
 		git clone -q "$repo_url" "$repo_dir" || \
 		  panic "cannot clone repository $repo_url"
 
+		echo -n "" > "$tmp_file" || panic "echo failed"
+
+		if [ -f "$state_file" ]; then
+			old_state="$(cat "$state_file")" || \
+			  panic "cannot get state"
+		else
+			old_state=none
+		fi
+
 		# Check for an empty repository.
 		empty_repo="$(GIT_DIR="$repo_dir/.git" ari_git_isempty)" || \
 		  panic "check for empty repository failed"
 		if [ "$empty_repo" -ne 0 ]; then
 			if [ "$verbose" -ge 1 ]; then
-				eecho "warning: skipping empty repository"
+				eecho "warning: empty repository"
+			fi
+			cat >> "$tmp_file" <<- EOF
+			Status: Error (Empty Repository)
+
+			The repository is empty.
+			As a submission, this would result in grade of zero.
+			EOF
+			[ $? -eq 0 ] || panic "output failed"
+			state=empty
+			if [ "$old_state" != "$state" ]; then
+				make_issue=1
 			fi
 			skip=1
+
 		fi
+
+		# This appears to be incorrect.
+		# The git rev-parse always fails.
+		#if [ "$skip" -eq 0 ]; then
+		#	git rev-parse --verify master 2> /dev/null
+		#	if [ $? -ne 0 ]; then
+		#		eecho "warning: no master branch"
+		#		printf "ERROR: no master branch\n" > "$tmp_file" || \
+		#		  panic "printf failed"
+		#		skip=1
+		#		make_issue=1
+		#	fi
+		#fi
 
 		if [ "$skip" -eq 0 ]; then
 			(cd "$repo_dir" && git checkout -q "$branch")
 			if [ $? -ne 0 ]; then
 				eecho "warning: cannot checkout $branch"
+				cat >> "$tmp_file" <<- EOF
+				Status: Error (Checkout Failed)
+
+				The master branch cannot be checked out.
+				(Most likely, there is no branch called "master".)
+				As a submission, this would result in grade of zero.
+				EOF
+				[ $? -eq 0 ] || panic "output failed"
 				skip=1
+				state=no_master
+				if [ "$old_state" != "$state" ]; then
+					make_issue=1
+				fi
 			fi
 		fi
 
@@ -272,6 +331,8 @@ while true; do
 			if [ -z "$commit_id" ]; then
 				panic "bad commit ID"
 			fi
+
+			state=master
 
 			ari_import1_options=()
 			if [ "$verbose" -ge 1 ]; then
@@ -295,6 +356,8 @@ while true; do
 			fi
 
 		fi
+
+		[ -n "$state" ] || panic "internal error (state not set)"
 
 		if [ "$skip" -eq 0 ]; then
 
@@ -324,6 +387,7 @@ while true; do
 				if [ "$verbose" -ge 1 ]; then
 					eecho "repository unchanged"
 				fi
+				make_issue=0
 				skip=1
 			fi
 
@@ -336,24 +400,38 @@ while true; do
 
 		fi
 
+		# Note: From this point onwards, the issue header has been set.
 		if [ "$skip" -eq 0 ]; then
+			cat >> "$tmp_file" <<- EOF
+			Status: Commit $commit_id
 
-			printf "" > "$tmp_file" || panic "cannot create temporary file"
-			printf "%s\n\n" "Status: Commit $commit_id" >> "$tmp_file" || \
-			  panic "cannot append to temporary file"
-			printf "Commit ID: $commit_id\n" >> "$tmp_file" || \
-			  panic "cannot append to temporary file"
-
-			if [ "$workspace_valid" -eq 0 ]; then
-				printf "import failed\n" >> "$tmp_file"
-			fi
-
-			if [ -L "$old_issue_file" ]; then
-				rm -f "$old_issue_file" || \
-				  panic "cannot remove $old_issue_file"
-			fi
-
+			Commit ID: $commit_id
+			EOF
+			[ $? -eq 0 ] || panic "output failed"
 		fi
+
+		if [ "$skip" -eq 0 ]; then
+			if [ "$workspace_valid" -eq 0 ]; then
+				cat >> "$tmp_file" <<- EOF
+				The import of the repository has failed.
+				As a submission, this would result in grade of zero.
+				EOF
+				[ $? -eq 0 ] || panic "output failed"
+				skip=1
+				# Note $state should be master here
+				if [ "$old_state" != "$state" -o \
+				  "$commit_id" != "$old_commit_id" ]; then
+					make_issue=1
+				fi
+			fi
+		fi
+
+		#if [ "$skip" -eq 0 ]; then
+		#	if [ -L "$old_issue_file" ]; then
+		#		rm -f "$old_issue_file" || \
+		#		  panic "cannot remove $old_issue_file"
+		#	fi
+		#fi
 
 		if [ "$skip" -eq 0 -a "$workspace_valid" -ne 0 ]; then
 
@@ -388,7 +466,17 @@ while true; do
 				  panic "cannot get package list"
 			else
 				packages=()
-				printf "validation failed\n" >> "$tmp_file"
+				cat >> "$tmp_file" <<- EOF
+				The repository has failed validation.
+				As a submission, this would result in grade of zero.
+				EOF
+				[ $? -eq 0 ] || panic "output failed"
+				# Note: $state should be master here
+				if [ "$old_state" != "$state" -o \
+				  "$commit_id" != "$old_commit_id" ]; then
+					make_issue=1
+				fi
+				skip=1
 			fi
 		fi
 
@@ -403,9 +491,9 @@ while true; do
 
 			if [ "${#packages[@]}" -gt 0 ]; then
 				printf "<pre>\n" >> "$tmp_file" || \
-				  panic
+				  panic "output failed"
 				print_status >> "$tmp_file" || \
-				  panic
+				  panic "output failed"
 			fi
 			for package in "${packages[@]}"; do
 				package_dir="$workspace_dir/package-$package"
@@ -509,9 +597,16 @@ while true; do
 				  panic "cannot append to temporary file"
 			fi
 
+			state=master
+			make_issue=1
+
 		fi
 
-		if [ "$skip" -eq 0 ]; then
+		if [ "$make_issue" -ne 0 ]; then
+
+			if [ "$commit_id" == $'\n' -o "$commit_id" = " " ]; then
+				commit_id=
+			fi
 
 			message="$(cat "$tmp_file")" || panic "cat failed"
 			echo
@@ -520,10 +615,11 @@ while true; do
 			$message
 			======== END OF HUB ISSUE ==========
 			EOF
+			[ $? -eq 0 ] || panic "output failed"
 
 			cp "$tmp_file" "$issue_file" || panic "cannot copy file"
 
-			ln -s "issues/$(basename "$issue_file")" "$old_issue_file" || \
+			ln -s -f "issues/$(basename "$issue_file")" "$old_issue_file" || \
 			  panic "cannot create symlink"
 
 			if [ "$enable_issues" -ne 0 ]; then
@@ -531,8 +627,13 @@ while true; do
 				  "$ari_hub" issue create -m "$message") )"
 			fi
 
-			echo "$commit_id" > "$old_commit_id_file" || \
-			  panic "cannot update commit ID"
+			echo "$state" > "$state_file" || \
+			  panic "cannot update state"
+
+			if [ "$state" == "master" ]; then
+				echo "$commit_id" > "$old_commit_id_file" || \
+				  panic "cannot update commit ID"
+			fi
 
 			if [ -d "$old_workspace_dir" ]; then
 				rm -rf "$old_workspace_dir" || \
