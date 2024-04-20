@@ -350,7 +350,12 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 done
 
 pdfjam_opts=()
-pdfjam_opts+=(--paper letter)
+
+# The --paper option appears to be broken in TexLive 2024.
+# So, use the --papersize option instead.
+#pdfjam_opts+=(--paper letter)
+pdfjam_opts+=(--papersize '{8.5in,11in}')
+
 #pdfjam_opts+=(--landscape)
 #pdfjam_opts+=(--nup 2x1)
 pdfjam_opts+=("${tmp_files[@]}")
@@ -366,7 +371,7 @@ fi
 
 if [ "$cleanup" -ne 0 ]; then
 	for file in "${tmp_files[@]}"; do
-		rm "$file" || panic "cannot remove file $file"
+		rm -f "$file" || panic "cannot remove file $file"
 	done
 fi
 
