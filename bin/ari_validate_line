@@ -92,7 +92,8 @@ if [ "$num_lines" -gt 1 ]; then
 fi
 
 if [ -n "$pattern" ]; then
-	echo "$data" | egrep -q -e "$pattern"
+	#echo "$data" | egrep -q -e "$pattern"
+	echo "$data" | grep -q -E "$pattern"
 	status=$?
 	if [ "$status" -ne 0 ]; then
 		panic "specified data is invalid ($data)"
