@@ -40,18 +40,6 @@ ari_mktemp="$cmd_dir/ari_mktemp"
 #
 ################################################################################
 
-preprocess()
-{
-	local recode_program=$(type -P recode) || recode_program=
-	if [ -x "$recode_program" ]; then
-		# Convert from UTF-8 to Latin-1 encoding.
-		"$recode_program" UTF-8..Latin-1
-	else
-		# The recode command is not available.
-		return 1
-	fi
-}
-
 is_valid_utf8()
 {
 	local in_file="$1"
@@ -111,10 +99,11 @@ usage()
 a2ps_program=$(type -P a2ps) || a2ps_program=
 ps2pdf_program=$(type -P ps2pdf) || ps2pdf_program=
 pdfjam_program=$(type -P pdfjam) || pdfjam_program=
+recode_program=$(type -P recode) || recode_program=
 
 a2ps_base_opts=()
-#a2ps_base_opts+=(-M letter)
-a2ps_base_opts+=(-M Letterdj)
+a2ps_base_opts+=(-M Letter)
+#a2ps_base_opts+=(-M Letterdj)
 a2ps_base_opts+=(-T4)
 a2ps_base_opts+=(--header=)
 a2ps_base_opts+=(--footer=)
@@ -194,6 +183,9 @@ if [ -z "$ps2pdf_program" ]; then
 fi
 if [ -z "$pdfjam_program" ]; then
 	panic "pdfjam program not found"
+fi
+if [ -z "$recode_program" ]; then
+	panic "recode program not found"
 fi
 
 user_name=$(whoami) || panic "cannot determine user"
@@ -314,7 +306,7 @@ for (( file_no=0; $((file_no<${#file_tab[@]})); file_no=$(($file_no+1)) )); do
 		# receive no input and generate a PDF document consisting of a
 		# single blank page and return with an EXIT STATUS OF ZERO.
 		# Consequently, we must ensure that the program $a2ps_program exists.
-		cat "$file" | preprocess | \
+		cat "$file" | "$recode_program" UTF-8..Latin-1 | \
 		  "$a2ps_program" "${a2ps_base_opts[@]}" "${a2ps_opts[@]}" -o - \
 		  2> /dev/null | \
 		  "$ps2pdf_program" "${ps2pdf_base_opts[@]}" - - \
