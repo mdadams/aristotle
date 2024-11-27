@@ -120,6 +120,7 @@ done
 
 options=()
 options+=(--without-bash-completion-dir)
+options+=(--disable-man)
 
 git clone "$repo_url" "$src_dir" || \
   panic "cannot clone repository"
