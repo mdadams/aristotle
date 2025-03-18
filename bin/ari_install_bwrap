@@ -2,7 +2,7 @@
 
 # __START_OF_LICENSE__
 # 
-# Copyright (c) 2018 Michael D. Adams
+# Copyright (c) 2018-2025 Michael D. Adams
 # All rights reserved.
 # 
 # This file is part of the Aristotle software.
@@ -34,6 +34,7 @@ usage()
 	if [ $# -gt 0 ]; then
 		echo "$@" 1>&2
 	fi
+	local example_version=v0.11.0
 	cat <<- EOF
 	Usage
 	=====
@@ -51,7 +52,7 @@ usage()
 	Examples
 	========
 
-	$0 -v v0.3.1 -d /opt/bwrap
+	$0 -v $example_version -d /opt/bwrap
 	$0 -v master -d /opt/bwrap
 	EOF
 	exit 2
@@ -128,18 +129,38 @@ git clone "$repo_url" "$src_dir" || \
 (cd "$src_dir" && git checkout "$version" --) || \
   panic "cannot checkout"
 
-(cd "$build_dir" && NOCONFIGURE=true ../src/autogen.sh) || \
-  panic "autoconf failed"
+if [ 1 -ne 0 ]; then
 
-(cd "$build_dir" && 
-  ../src/configure --prefix="$abs_install_dir" "${options[@]}") || \
-  panic "configure failed"
+	# The officially sanctioned build method using Meson.
 
-(cd "$build_dir" && make "${make_opts[@]}") || \
-  panic "make failed"
+	meson setup --prefix="$install_dir" "$build_dir" "$src_dir" || \
+	  panic "meson setup failed"
+	#meson "$build_dir" || panic
+	meson compile -C "$build_dir" || \
+	  panic "meson compile failed"
+	meson test -C "$build_dir" || \
+	  panic "meson test failed"
+	meson install -C "$build_dir" || \
+	  panic "meson install failed"
 
-(cd "$build_dir" && make install) || \
-  panic "make install failed"
+else
+
+	# The deprecated build method based on autotools.
+
+	(cd "$build_dir" && NOCONFIGURE=true ../src/autogen.sh) || \
+	  panic "autoconf failed"
+
+	(cd "$build_dir" && 
+	  ../src/configure --prefix="$abs_install_dir" "${options[@]}") || \
+	  panic "configure failed"
+
+	(cd "$build_dir" && make "${make_opts[@]}") || \
+	  panic "make failed"
+
+	(cd "$build_dir" && make install) || \
+	  panic "make install failed"
+
+fi
 
 rm -rf "$tmp_dir" || \
   panic "cannot remove temporary directory $tmp_dir"
