@@ -1,0 +1,184 @@
+#! /usr/bin/env bash
+
+# __START_OF_LICENSE__
+# 
+# Copyright (c) 2017 Michael D. Adams
+# All rights reserved.
+# 
+# This file is part of the Aristotle software.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3,
+# or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public
+# License along with this program; see the file LICENSE.  If not,
+# see <http://www.gnu.org/licenses/>.
+# 
+# __END_OF_LICENSE__
+
+cmd_dir=$(dirname "$0") || exit 1
+source "$cmd_dir/utilities" || exit 1
+
+usage()
+{
+	if [ $# -gt 0 ]; then
+		echo "$@" 1>&2
+	fi
+	cat <<- EOF
+	$(basename $0)
+	List the repositories in a GitHub organization.
+
+	Usage
+	=====
+
+	$0 [options] operation arg...
+
+	Options
+	=======
+
+	-D \$debug_level
+	    Set the debug level to \$debug_level.
+	-o \$org_name
+	    Set the organization to \$org_name.
+	-a \$assignment
+	    Set the assignment to \$assignment.
+	-v
+	    Increase the verbosity level of output.
+	-f \$format
+	    Set the format for Git URLs to \$format.
+	    Allowed values: https and ssh
+	-u
+	    Print Git URL associated with repository instead of its name.
+	EOF
+	exit 2
+}
+
+ari_gc_curl="$cmd_dir/ari_gc_curl"
+ari_gc_getcred="$cmd_dir/ari_gc_getcred"
+ari_gc_giturl="$cmd_dir/ari_gc_giturl"
+
+newline="
+"
+
+org_names=()
+assignments=
+debug_level=${ARI_DEBUG_LEVEL:-0}
+verbose=0
+git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
+use_url=0
+
+while getopts D:a:o:vg:u option; do
+	case "$option" in
+	D)
+		debug_level="$OPTARG";;
+	o)
+		org_names+=("$OPTARG");;
+	a)
+		assignment="$OPTARG";;
+	v)
+		verbose=$((verbose + 1));;
+	g)
+		git_proto="$OPTARG";;
+	u)
+		use_url=1;;
+	\?)
+		usage "invalid option $option";;
+	esac
+done
+shift $((OPTIND - 1))
+
+if [ "$debug_level" -ge 10 ]; then
+	set -xv
+fi
+
+if [ "${#org_names[@]}" -eq 0 ]; then
+	panic "no organization specified"
+fi
+
+for org_name in "${org_names[@]}"; do
+
+	json_data=""
+	query_url="https://api.github.com/orgs/$org_name/repos?per_page=100"
+	while true; do
+		buffer=$("$ari_gc_curl" -D "$debug_level" -- -s -i "$query_url") || \
+		  panic "curl failed"
+		curl_status=$?
+		if [ "$curl_status" -ne 0 ]; then
+			panic "operation failed"
+		fi
+		if [ "$debug_level" -ge 1 ]; then
+			echo "=========="
+			echo "$buffer"
+			echo "=========="
+		fi
+		header_buffer=$(echo "$buffer" | curl_select header) || \
+		  panic "cannot get header"
+		json_buffer=$(echo "$buffer" | curl_select body) || \
+		  panic "cannot get body"
+		json_data="$json_data$json_buffer$newline"
+		link_buffer=$(echo "$header_buffer" | grep -e '^Link:')
+		if [ $? -ne 0 ]; then
+			break
+		fi
+		if [ "$debug_level" -ge 1 ]; then
+			echo "==="
+			echo "$link_buffer"
+			echo "==="
+		fi
+		query_url=$(echo "$link_buffer" | http_get_next_link)
+		status=$?
+		if [ "$status" -eq 3 ]; then
+			break
+		fi
+		if [ "$status" -ne 0 ]; then
+			panic "cannot get next link"
+		fi
+	done
+
+	if [ "$debug_level" -ge 1 ]; then
+		echo "JSON data:"
+		echo "$json_data"
+	fi
+
+	repos=$(echo "$json_data" | jq -r '.[] | .name') || \
+	  panic "cannot get list of repositories"
+	repos=($(echo "$repos" | sort)) || \
+	  panic "cannot sort list of repositories"
+
+	selected_repos=()
+	for repo in "${repos[@]}"; do
+		select=1
+		if [ -n "$assignment" ]; then
+			echo "$repo" | grep -q -e "^${assignment}-" > /dev/null
+			status=$?
+			if [ "$status" -eq 0 ]; then
+				select=1
+			elif [ "$status" -eq 1 ]; then
+				select=0
+			else
+				panic
+			fi
+		fi
+		if [ "$select" -ne 0 ]; then
+			selected_repos+=("$repo")
+		fi
+	done
+
+	for repo in "${selected_repos[@]}"; do
+		if [ "$use_url" -ne 0 ]; then
+			repo_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
+			  -r "$repo")" || panic "cannot get repository URL"
+			echo "$repo_url"
+		else
+			echo "$repo"
+		fi
+	done
+
+done

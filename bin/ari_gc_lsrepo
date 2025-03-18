@@ -1,184 +1,143 @@
-#! /usr/bin/env bash
+#! /usr/bin/env python
 
-# __START_OF_LICENSE__
-# 
-# Copyright (c) 2017 Michael D. Adams
-# All rights reserved.
-# 
-# This file is part of the Aristotle software.
-# 
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as
-# published by the Free Software Foundation; either version 3,
-# or (at your option) any later version.
-# 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-# 
-# You should have received a copy of the GNU General Public
-# License along with this program; see the file LICENSE.  If not,
-# see <http://www.gnu.org/licenses/>.
-# 
-# __END_OF_LICENSE__
+import argparse
+import os
+import sys
 
-cmd_dir=$(dirname "$0") || exit 1
-source "$cmd_dir/utilities" || exit 1
+from github_classroom_util import GithubClassroom
 
-usage()
-{
-	if [ $# -gt 0 ]; then
-		echo "$@" 1>&2
-	fi
-	cat <<- EOF
-	$(basename $0)
-	List the repositories in a GitHub organization.
+def eprint(*args, **kwargs):
+    print(*args, file = sys.stderr, **kwargs)
 
-	Usage
-	=====
+def get_remaining(gc):
+    rate_limit = gc.get_rate_limit()
+    return rate_limit["rate"]["remaining"]
 
-	$0 [options] operation arg...
+def get_assignment_ids(gc, classroom_name, assignment_name=None):
 
-	Options
-	=======
+    classroom_list = gc.list_classrooms()
 
-	-D \$debug_level
-	    Set the debug level to \$debug_level.
-	-o \$org_name
-	    Set the organization to \$org_name.
-	-a \$assignment
-	    Set the assignment to \$assignment.
-	-v
-	    Increase the verbosity level of output.
-	-f \$format
-	    Set the format for Git URLs to \$format.
-	    Allowed values: https and ssh
-	-u
-	    Print Git URL associated with repository instead of its name.
-	EOF
-	exit 2
-}
+    # Get the classroom with the specified name.
+    index = next((i for i, v in enumerate(classroom_list) if v["name"] ==
+      classroom_name), None)
+    if index == None:
+        # No classroom was found with the specified name.
+        return None
+    classroom = classroom_list[index]
+    assert(classroom)
 
-ari_gc_curl="$cmd_dir/ari_gc_curl"
-ari_gc_getcred="$cmd_dir/ari_gc_getcred"
-ari_gc_giturl="$cmd_dir/ari_gc_giturl"
+    assignment_list = gc.list_assignments(classroom["id"])
+    if assignment_name is not None:
+        index = next((i for i, v in enumerate(assignment_list) if
+          v["title"] == assignment_name), None)
+        if index == None:
+            return None
+        ids = [assignment_list[index]["id"]]
+    else:
+        ids = [assignment["id"] for assignment in assignment_list]
+    return ids
 
-newline="
-"
+def get_github_token():
+    token = None
+    if token is None and cl_args.gh_token_env is not None:
+        token = os.environ.get(cl_args.gh_token_env)
+    if token is None:
+        token = os.environ.get("ARI_GC_TOKEN")
+    if token is None:
+        token = os.environ.get("ARI_GH_TOKEN")
+    if token is None:
+        token = os.environ.get("GH_TOKEN")
+    return token
 
-org_names=()
-assignments=
-debug_level=${ARI_DEBUG_LEVEL:-0}
-verbose=0
-git_proto="$("$ari_gc_getcred" -k gc_git_protocol)" || git_proto=https
-use_url=0
+def parse_command_line():
 
-while getopts D:a:o:vg:u option; do
-	case "$option" in
-	D)
-		debug_level="$OPTARG";;
-	o)
-		org_names+=("$OPTARG");;
-	a)
-		assignment="$OPTARG";;
-	v)
-		verbose=$((verbose + 1));;
-	g)
-		git_proto="$OPTARG";;
-	u)
-		use_url=1;;
-	\?)
-		usage "invalid option $option";;
-	esac
-done
-shift $((OPTIND - 1))
+    parser = argparse.ArgumentParser(
+      description="GitHub Classroom Repository Lister")
 
-if [ "$debug_level" -ge 10 ]; then
-	set -xv
-fi
+    parser.add_argument(
+      "--gh-token-env",
+      dest="gh_token_env",
+      help="Specify GitHub token environment variable."
+    )
 
-if [ "${#org_names[@]}" -eq 0 ]; then
-	panic "no organization specified"
-fi
+    parser.add_argument(
+      "-o", "--classroom",
+      dest="classroom_name",
+      required=True,
+      help="Specify classroom name."
+    )
 
-for org_name in "${org_names[@]}"; do
+    parser.add_argument(
+      "-a", "--assignment",
+      dest="assignment_name",
+      default=None,
+      help="Specify assignment name."
+    )
 
-	json_data=""
-	query_url="https://api.github.com/orgs/$org_name/repos?per_page=100"
-	while true; do
-		buffer=$("$ari_gc_curl" -D "$debug_level" -- -s -i "$query_url") || \
-		  panic "curl failed"
-		curl_status=$?
-		if [ "$curl_status" -ne 0 ]; then
-			panic "operation failed"
-		fi
-		if [ "$debug_level" -ge 1 ]; then
-			echo "=========="
-			echo "$buffer"
-			echo "=========="
-		fi
-		header_buffer=$(echo "$buffer" | curl_select header) || \
-		  panic "cannot get header"
-		json_buffer=$(echo "$buffer" | curl_select body) || \
-		  panic "cannot get body"
-		json_data="$json_data$json_buffer$newline"
-		link_buffer=$(echo "$header_buffer" | grep -e '^Link:')
-		if [ $? -ne 0 ]; then
-			break
-		fi
-		if [ "$debug_level" -ge 1 ]; then
-			echo "==="
-			echo "$link_buffer"
-			echo "==="
-		fi
-		query_url=$(echo "$link_buffer" | http_get_next_link)
-		status=$?
-		if [ "$status" -eq 3 ]; then
-			break
-		fi
-		if [ "$status" -ne 0 ]; then
-			panic "cannot get next link"
-		fi
-	done
+    parser.add_argument(
+      "-g", "--git-proto",
+      dest="git_proto",
+      default="https",
+      help="Specify Git protocol."
+    )
 
-	if [ "$debug_level" -ge 1 ]; then
-		echo "JSON data:"
-		echo "$json_data"
-	fi
+    parser.add_argument(
+      "-u", "--url",
+      default=False,
+      action=argparse.BooleanOptionalAction,
+      dest="git_url",
+      help="Enable/disable Git URL."
+    )
 
-	repos=$(echo "$json_data" | jq -r '.[] | .name') || \
-	  panic "cannot get list of repositories"
-	repos=($(echo "$repos" | sort)) || \
-	  panic "cannot sort list of repositories"
+    parser.add_argument(
+      "--show-rate-limit",
+      default=False,
+      action=argparse.BooleanOptionalAction,
+      dest="show_rate_limit",
+      help="Enable/disable showing of rate limit."
+    )
 
-	selected_repos=()
-	for repo in "${repos[@]}"; do
-		select=1
-		if [ -n "$assignment" ]; then
-			echo "$repo" | grep -q -e "^${assignment}-" > /dev/null
-			status=$?
-			if [ "$status" -eq 0 ]; then
-				select=1
-			elif [ "$status" -eq 1 ]; then
-				select=0
-			else
-				panic
-			fi
-		fi
-		if [ "$select" -ne 0 ]; then
-			selected_repos+=("$repo")
-		fi
-	done
+    return parser.parse_args()
 
-	for repo in "${selected_repos[@]}"; do
-		if [ "$use_url" -ne 0 ]; then
-			repo_url="$("$ari_gc_giturl" -p "$git_proto" -o "$org_name" \
-			  -r "$repo")" || panic "cannot get repository URL"
-			echo "$repo_url"
-		else
-			echo "$repo"
-		fi
-	done
+def main():
 
-done
+    global cl_args
+    cl_args = parse_command_line()
+
+    github_token = get_github_token()
+    if github_token is None:
+        eprint("warning: GitHub token has not been specified")
+
+    gc = GithubClassroom(token = github_token)
+
+    if cl_args.show_rate_limit:
+        start_rate_limit = get_remaining(gc)
+        eprint(f"rate limit remaining {start_rate_limit}")
+
+    assignment_ids = get_assignment_ids(gc, cl_args.classroom_name,
+      cl_args.assignment_name)
+    for assignment_id in assignment_ids:
+        submissions = gc.list_accepted_assignments(assignment_id)
+        submissions = sorted(submissions, key=lambda x: x["repository"]["name"].lower())
+        for submission_index, submission in enumerate(submissions):
+            repo = submission["repository"]
+            repo_name = repo["name"]
+            full_repo_name = repo["full_name"]
+            if cl_args.git_url:
+                if cl_args.git_proto == "https":
+                    gh_user = "uvic-frodo-admin"
+                    user_spec = f"{gh_user}@"
+                    prefix = f"https://{user_spec}github.com/"
+                else:
+                    prefix = f"ssh://git@github.com/"
+                print(f"{prefix}{full_repo_name}.git")
+            else:
+                print(repo_name)
+
+    if cl_args.show_rate_limit:
+        end_rate_limit = get_remaining(gc)
+        eprint(f"rate limit remaining {end_rate_limit}")
+        eprint(f"rate limit used {start_rate_limit - end_rate_limit}")
+
+if __name__ == "__main__":
+    sys.exit(main())
