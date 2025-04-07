@@ -306,8 +306,10 @@ def demo_3():
     org_name = classroom_name
 
     assignment_id = get_assignment_id(gc, classroom_name, assignment_name)
+    print(json.dumps(gc.get_assignment(assignment_id), indent=2))
     submissions = gc.list_accepted_assignments(assignment_id)
     for submission_index, submission in enumerate(submissions):
+        eprint(submission)
         submitted = submission["submitted"]
         repo = submission["repository"]
         repo_name = repo["name"]
@@ -324,9 +326,9 @@ def demo_3():
 ################################################################################
 
 def main():
-    demo_1()
+    #demo_1()
     #demo_2()
-    #demo_3()
+    demo_3()
 
 ################################################################################
 

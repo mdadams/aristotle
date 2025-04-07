@@ -136,6 +136,14 @@ elif [[ $tag =~ ^blacklisted_files$ ]]; then
 elif [[ $tag =~ ^report_files$ ]]; then
 	default_valid=1
 	default_value=()
+####
+elif [[ $tag =~ ^license_file$ ]]; then
+	default_valid=1
+	default_value=()
+elif [[ $tag =~ ^licensed_files$ ]]; then
+	default_valid=1
+	default_value=()
+####
 elif [[ $tag =~ ^validate$ ]]; then
 	default_valid=1
 	default_value=()

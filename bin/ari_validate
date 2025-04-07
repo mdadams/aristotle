@@ -75,6 +75,11 @@ ari_locate="$cmd_dir/ari_locate"
 ari_student_info="$cmd_dir/ari_student_info"
 ari_validate_line="$cmd_dir/ari_validate_line"
 ari_find_assignment="$cmd_dir/ari_find_assignment"
+ari_licentia=$(type -P ari-licentia) || ari_licentia=
+
+if [ -z "$ari_licentia" ]; then
+	panic "ari-licentia program not found"
+fi
 
 # Note: Maybe it would be better to keep this disabled?
 enable_term=1
@@ -130,7 +135,53 @@ whitelisted_files=($("$ari_info" -a "$project" whitelisted_files)) || \
   panic "cannot get whitelisted_files property"
 blacklisted_files=($("$ari_info" -a "$project" blacklisted_files)) || \
   panic "cannot get blacklisted_files property"
+license_file=($("$ari_info" -a "$project" license_file)) || \
+  panic "cannot get license_file property"
+license_file="${license_file[0]}"
+licensed_files=($("$ari_info" -a "$project" licensed_files)) || \
+  panic "cannot get licensed_files property"
 set +f
+
+if [ -n "$license_file" ]; then
+	license_enabled_default=1
+	license_notices_enabled_default=1
+else
+	license_enabled_default=0
+	license_notices_enabled_default=0
+fi
+
+license_enabled="${ARI_LICENSE_ENABLED:-$license_enabled_default}"
+if [ "$license_enabled" -ne 0 ]; then
+	license_hashes="${ARI_LICENSE_HASHES:-invalid}"
+fi
+license_notices_enabled="${ARI_LICENSE_NOTICES_ENABLED:-$license_notices_enabled_default}"
+if [ "$license_notices_enabled" -ne 0 ]; then
+	license_notice_hashes="${ARI_LICENSE_NOTICE_HASHES:-invalid}"
+fi
+if [ "$debug_level" -ge 1 ]; then
+	eecho "license enabled $license_enabled"
+	eecho "license notices enabled: $license_notices_enabled"
+fi
+
+#if [ "$license_enabled" -ne 0 ]; then
+#	set -f
+#	license_file=($("$ari_info" -a "$project" license_file)) || \
+#	  panic "cannot get license_file property"
+#	set +f
+#else
+#	license_file=
+#fi
+#if [ "$license_notices_enabled" -ne 0 ]; then
+#	set -f
+#	licensed_files=($("$ari_info" -a "$project" licensed_files)) || \
+#	  panic "cannot get licensed_files property"
+#	set +f
+#else
+#	licensed_files=()
+#fi
+if [ "$license_enabled" -ne 0 -a -n "$license_file" ]; then
+	required_files+=("$license_file")
+fi
 
 if [ ! -d "$validate_dir" ]; then
 	mkdir "$validate_dir" || \
@@ -228,6 +279,21 @@ for file in "${all_files[@]}"; do
 		echo "validity check: $file $valid"
 	fi
 done
+
+if [ "$license_enabled" -ne 0 ]; then
+	(cd "$dist_dir" && \
+	  "$ari_licentia" check-license --license-hash "$license_hashes" \
+	  "$license_file") || \
+	  panic "missing/invalid license file"
+fi
+
+if [ "$license_notices_enabled" -ne 0 ]; then
+	(cd "$dist_dir" && \
+	  "$ari_licentia" check-notice --notice-hash "$license_notice_hashes" \
+	  --ignore-missing "${licensed_files[@]}") || \
+	  panic "one or more missing/invalid license notices"
+fi
+
 
 student_name_file="$project_dir/student_name"
 student_id_file="$project_dir/student_id"

@@ -4,7 +4,8 @@ import argparse
 import os
 import sys
 
-from github_classroom_util import GithubClassroom
+#from github_classroom_util import GithubClassroom
+from pyaristotle.github_classroom import GithubClassroom
 
 def eprint(*args, **kwargs):
     print(*args, file = sys.stderr, **kwargs)
@@ -125,7 +126,7 @@ def main():
             full_repo_name = repo["full_name"]
             if cl_args.git_url:
                 if cl_args.git_proto == "https":
-                    gh_user = "uvic-frodo-admin"
+                    gh_user = os.environ["ARI_GH_USER"]
                     user_spec = f"{gh_user}@"
                     prefix = f"https://{user_spec}github.com/"
                 else:
