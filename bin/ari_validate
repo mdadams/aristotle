@@ -138,49 +138,63 @@ blacklisted_files=($("$ari_info" -a "$project" blacklisted_files)) || \
 license_file=($("$ari_info" -a "$project" license_file)) || \
   panic "cannot get license_file property"
 license_file="${license_file[0]}"
+notice_file=($("$ari_info" -a "$project" notice_file)) || \
+  panic "cannot get notice_file property"
+notice_file="${notice_file[0]}"
 licensed_files=($("$ari_info" -a "$project" licensed_files)) || \
   panic "cannot get licensed_files property"
 set +f
 
-if [ -n "$license_file" ]; then
-	license_enabled_default=1
-	license_notices_enabled_default=1
+lic_enabled="${ARI_LIC_ENABLED:-1}"
+if [ "$lic_enabled" -ne 0 ]; then
+	if [ -n "$license_file" ]; then
+		license_enabled_default=1
+	else
+		license_enabled_default=0
+	fi
+	if [ -n "$notice_file" ]; then
+		notice_enabled_default=1
+	else
+		notice_enabled_default=0
+	fi
+	if [ "${#licensed_files[@]}" -ne 0 ]; then
+		headers_enabled_default=1
+	else
+		headers_enabled_default=0
+	fi
+	license_enabled="${ARI_LIC_LICENSE_ENABLED:-$license_enabled_default}"
+	notice_enabled="${ARI_LIC_NOTICE_ENABLED:-$license_enabled_default}"
+	headers_enabled="${ARI_LIC_HEADERS_ENABLED:-$license_enabled_default}"
 else
-	license_enabled_default=0
-	license_notices_enabled_default=0
+	license_enabled=0
+	notice_enabled=0
+	headers_enabled=0
 fi
 
-license_enabled="${ARI_LICENSE_ENABLED:-$license_enabled_default}"
 if [ "$license_enabled" -ne 0 ]; then
-	license_hashes="${ARI_LICENSE_HASHES:-invalid}"
+	license_hashes="${ARI_LIC_LICENSE_HASHES:-invalid}"
 fi
-license_notices_enabled="${ARI_LICENSE_NOTICES_ENABLED:-$license_notices_enabled_default}"
-if [ "$license_notices_enabled" -ne 0 ]; then
-	license_notice_hashes="${ARI_LICENSE_NOTICE_HASHES:-invalid}"
+if [ "$notice_enabled" -ne 0 ]; then
+	notice_hashes="${ARI_LIC_NOTICE_HASHES:-0,invalid}"
+fi
+if [ "$headers_enabled" -ne 0 ]; then
+	header_hashes="${ARI_LIC_HEADER_HASHES:-invalid}"
 fi
 if [ "$debug_level" -ge 1 ]; then
 	eecho "license enabled $license_enabled"
-	eecho "license notices enabled: $license_notices_enabled"
+	eecho "notice enabled: $notice_enabled"
+	eecho "headers enabled: $headers_enabled"
 fi
 
-#if [ "$license_enabled" -ne 0 ]; then
-#	set -f
-#	license_file=($("$ari_info" -a "$project" license_file)) || \
-#	  panic "cannot get license_file property"
-#	set +f
-#else
-#	license_file=
-#fi
-#if [ "$license_notices_enabled" -ne 0 ]; then
-#	set -f
-#	licensed_files=($("$ari_info" -a "$project" licensed_files)) || \
-#	  panic "cannot get licensed_files property"
-#	set +f
-#else
-#	licensed_files=()
-#fi
 if [ "$license_enabled" -ne 0 -a -n "$license_file" ]; then
 	required_files+=("$license_file")
+else
+	whitelisted_files+=("$license_file")
+fi
+if [ "$notice_enabled" -ne 0 -a -n "$notice_file" ]; then
+	required_files+=("$notice_file")
+else
+	whitelisted_files+=("$notice_file")
 fi
 
 if [ ! -d "$validate_dir" ]; then
@@ -287,13 +301,19 @@ if [ "$license_enabled" -ne 0 ]; then
 	  panic "missing/invalid license file"
 fi
 
-if [ "$license_notices_enabled" -ne 0 ]; then
+if [ "$notice_enabled" -ne 0 ]; then
 	(cd "$dist_dir" && \
-	  "$ari_licentia" check-notice --notice-hash "$license_notice_hashes" \
+	  "$ari_licentia" check-notice --notice-hash "$notice_hashes" \
+	  "$notice_file") || \
+	  panic "missing/invalid notice file"
+fi
+
+if [ "$headers_enabled" -ne 0 ]; then
+	(cd "$dist_dir" && \
+	  "$ari_licentia" check-header --header-hash "$header_hashes" \
 	  --ignore-missing "${licensed_files[@]}") || \
 	  panic "one or more missing/invalid license notices"
 fi
-
 
 student_name_file="$project_dir/student_name"
 student_id_file="$project_dir/student_id"
