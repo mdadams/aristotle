@@ -162,9 +162,18 @@ if [ "$lic_enabled" -ne 0 ]; then
 	else
 		headers_enabled_default=0
 	fi
-	license_enabled="${ARI_LIC_LICENSE_ENABLED:-$license_enabled_default}"
-	notice_enabled="${ARI_LIC_NOTICE_ENABLED:-$license_enabled_default}"
-	headers_enabled="${ARI_LIC_HEADERS_ENABLED:-$license_enabled_default}"
+	license_enabled="$license_enabled_default"
+	notice_enabled="$notice_enabled_default"
+	headers_enabled="$headers_enabled_default"
+	if [ -n "$ARI_LIC_LICENSE_ENABLED" ]; then
+		license_enabled="$ARI_LIC_LICENSE_ENABLED"
+	fi
+	if [ -n "$ARI_LIC_NOTICE_ENABLED" ]; then
+		notice_enabled="$ARI_LIC_NOTICE_ENABLED"
+	fi
+	if [ -n "$ARI_LIC_HEADER_ENABLED" ]; then
+		headers_enabled="$ARI_LIC_HEADER_ENABLED"
+	fi
 else
 	license_enabled=0
 	notice_enabled=0
@@ -182,8 +191,12 @@ if [ "$headers_enabled" -ne 0 ]; then
 fi
 if [ "$debug_level" -ge 1 ]; then
 	eecho "license enabled $license_enabled"
+	eecho "license file: ${license_file:-(null)}"
 	eecho "notice enabled: $notice_enabled"
+	eecho "notice file: ${notice_file:-(null)}"
 	eecho "headers enabled: $headers_enabled"
+	eecho "number of licensed files: ${#licensed_files[@]}"
+	eecho "licensed files: ${licensed_files[*]}"
 fi
 
 if [ "$license_enabled" -ne 0 -a -n "$license_file" ]; then
