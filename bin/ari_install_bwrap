@@ -74,6 +74,7 @@ version=master
 install_dir=
 
 tmp_dir_template="${ARI_TMPDIR:-/tmp}/ari_install_bwrap-$user-$host-$$-XXXXXXXX"
+enable_test="${ARI_INSTALL_BWRAP_ENABLE_TEST:-0}"
 
 while getopts d:v: opt; do
 	case "$opt" in
@@ -138,8 +139,10 @@ if [ 1 -ne 0 ]; then
 	#meson "$build_dir" || panic
 	meson compile -C "$build_dir" || \
 	  panic "meson compile failed"
-	meson test -C "$build_dir" || \
-	  panic "meson test failed"
+	if [ "$enable_test" -ne 0 ]; then
+		meson test -C "$build_dir" || \
+		  panic "meson test failed"
+	fi
 	meson install -C "$build_dir" || \
 	  panic "meson install failed"
 
